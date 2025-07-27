@@ -1,27 +1,8 @@
 import sys
-
-from PyQt5.QtCore import QObject, QSize, QState, Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QStatusBar, QVBoxLayout, QWidget
 
-from .constants import START_LISTENING_MSG, STOP_LISTENING_MSG, INACTIVE_LISTENER_MSG, ACTIVE_LISTENER_MSG
-
-class QRCodeListener(QObject):
-    url_opened = pyqtSignal(str, str) # title, message
-
-    def __init__(self, timeout=1.0, allowed_domains=None):
-        super().__init__()
-        self.buffer = ""
-        self.is_listening = False
-        return
-
-    def start_listening(self):
-        self.is_listening = True
-        return
-
-    def stop_listening(self):
-        self.is_listening = False
-        return
-
+from scanner.listener import QRCodeListener
+from constants import START_LISTENING_MSG, STOP_LISTENING_MSG, INACTIVE_LISTENER_MSG, ACTIVE_LISTENER_MSG
 
 class OpenQRApp(QMainWindow):
     def __init__(self):
