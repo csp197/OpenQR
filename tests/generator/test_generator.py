@@ -5,23 +5,57 @@ import pytest
 def generator():
     return QRCodeGenerator()
 
-def test_valid_urls(generator):
-    pass
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.example.com",
+        "http://www.example.com",
+        "https://sub.domain.com/path",
+        "https://domain.com/path?param1=value1&param2=value2"
+    ]
+)
+def test_valid_urls(generator, url):
+    assert generator.validate_url(url) is True
 
-def test_invalid_urls(generator):
-    pass
+@pytest.mark.parametrize(
+    "invalid_url",
+    [
+        "",
+        "totally not a url",
+        "http:/www.example.com",
+        "https://wwwexamplecom"
+    ]
+)
+def test_invalid_urls(generator, invalid_url):
+    assert generator.validate_url(invalid_url) is False
 
-def test_empty_urls(generator):
-    pass
+@pytest.mark.parametrize(
+    "url,should_pass",
+    [
+        ("https://www.example.com", True),
+        ("http://www.example.com", True),
+        ("not even trying to be a url", False),
+        ("", False),
+    ]
+)
+def test_qr_code_creation(generator, url, should_pass):
+    if should_pass:
+        qr_code = generator.generate_qr_code(url)
+        assert qr_code is not None
 
-def test_malformed_urls(generator):
-    pass
+        from PIL import Image
+        assert isinstance(qr_code, Image.Image)
+    else:
+        with pytest.raises(ValueError):
+            generator.generate_qr_code(url)
 
-def test_qr_code_creation(generator):
-    pass
-
-def test_qr_code_size(generator):
-    pass
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.example.com",
+        "http://www.example.com"
+    ]
+)
 
 def test_qr_code_format(generator):
     pass

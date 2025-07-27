@@ -1,4 +1,5 @@
 from openqr.scanner.listener import QRCodeListener
+
 import pytest
 
 @pytest.fixture

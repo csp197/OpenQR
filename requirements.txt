@@ -1,5 +1,13 @@
+iniconfig==2.1.0
+packaging==25.0
 pillow==11.3.0
+pluggy==1.6.0
+Pygments==2.19.2
 PyQt5==5.15.11
 PyQt5-Qt5==5.15.17
 PyQt5_sip==12.17.0
+pytest==8.4.1
+pytest-qt==4.5.0
 qrcode==8.2
+typing_extensions==4.14.1
+validators==0.35.0
