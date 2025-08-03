@@ -37,7 +37,7 @@ jobs:
           dist\OpenQR.exe --help || echo "Executed successfully"
 
       - name: Upload Windows executable
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: OpenQR-windows-executable
           path: dist/OpenQR.exe
@@ -70,7 +70,7 @@ jobs:
           ./dist/OpenQR --help || echo "Executed successfully"
 
       - name: Upload macOS executable
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: OpenQR-macos-executable
           path: dist/OpenQR
@@ -103,7 +103,7 @@ jobs:
           ./dist/OpenQR --help || echo "Executed successfully"
 
       - name: Upload Linux executable
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: OpenQR-linux-executable
           path: dist/OpenQR
@@ -116,19 +116,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download Windows executable
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: OpenQR-windows-executable
           path: dist/
 
       - name: Download macOS executable
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: OpenQR-macos-executable
           path: dist/
 
       - name: Download Linux executable
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: OpenQR-linux-executable
           path: dist/
