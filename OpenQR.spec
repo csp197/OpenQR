@@ -5,7 +5,7 @@ a = Analysis(
     ['openqr/app.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets/open2.png', 'assets')],
+    datas=[('assets/openqr_icon.png', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,11 +35,11 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/open2.png'],
+    icon=['assets/openqr_icon.png'],
 )
 app = BUNDLE(
     exe,
     name='OpenQR.app',
-    icon='assets/open2.png',
+    icon='assets/openqr_icon.png',
     bundle_identifier=None,
 )
