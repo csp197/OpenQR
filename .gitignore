@@ -1,5 +1,7 @@
 venv
 .pytest_cache
 .ropeproject
-__*
+.DS_Store
+build
+dist
 qt

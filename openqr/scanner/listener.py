@@ -1,7 +1,8 @@
-from PyQt5.QtCore import QObject, QSize, QState, Qt, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal
+
 
 class QRCodeListener(QObject):
-    url_opened = pyqtSignal(str, str) # title, message
+    url_opened = pyqtSignal(str, str)  # title, message
 
     def __init__(self, timeout=1.0, allowed_domains=None):
         super().__init__()
