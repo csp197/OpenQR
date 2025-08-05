@@ -125,7 +125,7 @@ jobs:
           path: dist/OpenQR
 
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
@@ -137,17 +137,17 @@ jobs:
           name: OpenQR-windows-executable
           path: dist/
 
-      - name: Download macOS executable
-        uses: actions/download-artifact@v4
-        with:
-          name: OpenQR-macos-executable
-          path: dist/
+      # - name: Download macOS executable
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: OpenQR-macos-executable
+      #     path: dist/
 
-      - name: Download Linux executable
-        uses: actions/download-artifact@v4
-        with:
-          name: OpenQR-linux-executable
-          path: dist/
+      # - name: Download Linux executable
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: OpenQR-linux-executable
+      #     path: dist/
 
       - name: Create GitHub Release
         id: create_release
@@ -158,8 +158,8 @@ jobs:
           body: |
             Automated release of OpenQR executables:
             - Windows (OpenQR.exe)
-            - macOS (OpenQR)
-            - Linux (OpenQR)
+            # - macOS (OpenQR)
+            # - Linux (OpenQR)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -170,16 +170,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload macOS executable to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/OpenQR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Upload macOS executable to release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: dist/OpenQR
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Linux executable to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/OpenQR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Upload Linux executable to release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: dist/OpenQR
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
