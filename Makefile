@@ -2,8 +2,8 @@
 
 # Project Settings
 APP_NAME = OpenQR
-APP_NAME_LOWER = $(shell echo $(APP_NAME) | tr A-Z a-z)
-ENTRY_POINT = openqr/app.py
+APP_NAME_LOWERCASE = $(shell echo $(APP_NAME) | tr A-Z a-z)
+ENTRY_POINT = main.py
 ICON = assets/openqr_icon.png
 VENV = venv
 PYTHON = $(VENV)/bin/python3
@@ -48,7 +48,7 @@ setup:
 # Run the app using the virtual environment
 .PHONY: run
 run:
-	$(PYTHON) -m $(APP_NAME_LOWER).app
+	$(PYTHON) $(ENTRY_POINT)
 
 # Lint source code
 .PHONY: lint

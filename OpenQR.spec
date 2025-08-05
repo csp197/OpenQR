@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['openqr/app.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=[('assets/openqr_icon.png', 'assets')],
