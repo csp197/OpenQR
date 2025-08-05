@@ -9,7 +9,7 @@ from pathvalidate import (
     sanitize_filename,
 )  # Library to make sure filenames are safe for file systems
 
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage
 from PyQt5.QtWidgets import QApplication
 # from PIL.ImageQt import ImageQt
 

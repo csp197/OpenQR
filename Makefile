@@ -68,7 +68,7 @@ test:
 # Build the app using PyInstaller
 .PHONY: build
 build:
-	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
+	$(PYINSTALLER) --noconfirm --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
 		--icon=$(ICON) \
 		--add-data "$(ADD_DATA)"
@@ -78,12 +78,12 @@ build:
 dist: build
 	@echo "✅ Executable available at: ./dist/$(APP_NAME)"
 
-# Clean all temp files and caches
+# Clean all temp files, caches and logs
 .PHONY: clean
 clean:
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -exec rm -r {} +
-	rm -rf .pytest_cache .mypy_cache build dist *.spec
+	rm -rf .pytest_cache .mypy_cache build dist *.spec *.log
 
 # Freeze dependencies
 .PHONY: freeze

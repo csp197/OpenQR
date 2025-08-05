@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QGroupBox,
     QColorDialog,
+    QSystemTrayIcon
 )  # Import specific classes from PyQt5 for GUI development
 from PyQt5.QtGui import (
     QPixmap,
@@ -35,7 +36,9 @@ from openqr.constants import (
     INACTIVE_LISTENER_MSG,
     ACTIVE_LISTENER_MSG,
 )  # Constants for UI button and label messages
+from openqr.utils import logger  # Import class for custom logger
 
+log = logger.setup_logger()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
@@ -55,6 +58,7 @@ class OpenQRApp(QMainWindow):
     def __init__(self):
         """Default constructor for OpenQRApp class."""
         super().__init__()  # Initialize the base QMainWindow
+        log.info("Initializing OpenQRApp")
         self.qr_code_listener = QRCodeListener(
             timeout=1.0
         )  # Initialize the QR listener with a 1-second timeout
@@ -71,10 +75,11 @@ class OpenQRApp(QMainWindow):
         self.setWindowTitle(
             "OpenQR - QR Code Scanner & Generator"
         )  # Set the main window title
-        self.setWindowIcon(
-            QIcon("assets/openqr_icon.png")
-        )  # Set the application icon from a local SVG file
         self.setMinimumSize(900, 600)  # Define the minimum window size
+        icon_path = "assets/openqr_icon.png"
+        self.setWindowIcon(QIcon(icon_path))
+        # self.tray_icon = QSystemTrayIcon(QIcon(icon_path), self)
+        # self.tray_icon.show()
 
         # Create the root widget and main layout
         main_widget = QWidget()  # Create the central widget
@@ -185,41 +190,41 @@ class OpenQRApp(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
 
-        # ----- Dark Mode -----
-        self.dark_mode_enabled = False
-        self.theme_toggle = QPushButton("Enable Dark Mode")
-        self.theme_toggle.clicked.connect(self.toggle_theme)
-        generator_layout.addWidget(self.theme_toggle)
+    #     # ----- Dark Mode -----
+    #     self.dark_mode_enabled = False
+    #     self.theme_toggle = QPushButton("Enable Dark Mode")
+    #     self.theme_toggle.clicked.connect(self.toggle_theme)
+    #     generator_layout.addWidget(self.theme_toggle)
 
-    def toggle_theme(self):
-        # Toggles dark mode styling for the app
-        if self.dark_mode_enabled:
-            self.setStyleSheet("")
-            self.theme_toggle.setText("Enable Dark Mode")
-        else:
-            # Apply dark color palette using style sheet
-            self.setStyleSheet("""
-                QWidget {
-                    background-color: #2b2b2b;
-                    color: white;
-                }
-                QLineEdit, QPushButton {
-                    background-color: #3c3c3c;
-                    color: white;
-                    border: 1px solid #5a5a5a;
-                }
-                QGroupBox {
-                    border: 1px solid gray;
-                    margin-top: 10px;
-                }
-                QGroupBox:title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 3px 0 3px;
-                }
-            """)
-            self.theme_toggle.setText("Disable Dark Mode")
-        self.dark_mode_enabled = not self.dark_mode_enabled
+    # def toggle_theme(self):
+    #     # Toggles dark mode styling for the app
+    #     if self.dark_mode_enabled:
+    #         self.setStyleSheet("")
+    #         self.theme_toggle.setText("Enable Dark Mode")
+    #     else:
+    #         # Apply dark color palette using style sheet
+    #         self.setStyleSheet("""
+    #             QWidget {
+    #                 background-color: #2b2b2b;
+    #                 color: white;
+    #             }
+    #             QLineEdit, QPushButton {
+    #                 background-color: #3c3c3c;
+    #                 color: white;
+    #                 border: 1px solid #5a5a5a;
+    #             }
+    #             QGroupBox {
+    #                 border: 1px solid gray;
+    #                 margin-top: 10px;
+    #             }
+    #             QGroupBox:title {
+    #                 subcontrol-origin: margin;
+    #                 left: 10px;
+    #                 padding: 0 3px 0 3px;
+    #             }
+    #         """)
+    #         self.theme_toggle.setText("Disable Dark Mode")
+    #     self.dark_mode_enabled = not self.dark_mode_enabled
 
     def set_fg_color(self):
         # Open a dialog for selecting foreground (QR) color
@@ -307,7 +312,19 @@ class OpenQRApp(QMainWindow):
 
 # Main application execution
 if __name__ == "__main__":
+    print("in main 1")
     app = QApplication(sys.argv)  # Create the Qt application
+    print("in main 2")
     window = OpenQRApp()  # Create the main window
+    print("in main 3")
     window.show()  # Show the main window
+    print("in main 4")
     sys.exit(app.exec())  # Run the app and exit cleanly
+    # try:
+    #     app = QApplication(sys.argv)  # Create the Qt application
+    #     window = OpenQRApp()  # Create the main window
+    #     window.show()  # Show the main window
+    #     sys.exit(app.exec())  # Run the app and exit cleanly
+    # except Exception as e:
+    #         with open("crash.log", "w") as f:
+    #             f.write(str(e))
