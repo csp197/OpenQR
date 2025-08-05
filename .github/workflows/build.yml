@@ -97,6 +97,15 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install Qt dependencies (for PyQt6 / PySide6)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-xinerama0
+
       - name: Run tests
         run: |
           venv/bin/pytest tests/
