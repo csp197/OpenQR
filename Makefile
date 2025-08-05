@@ -6,16 +6,21 @@ APP_NAME_LOWERCASE = $(shell echo $(APP_NAME) | tr A-Z a-z)
 ENTRY_POINT = main.py
 ICON = assets/openqr_icon.png
 VENV = venv
-PYTHON = $(VENV)/bin/python3
-PIP = $(VENV)/bin/pip
-PYINSTALLER = $(VENV)/bin/pyinstaller
-RUFF = $(VENV)/bin/ruff
-PYTEST = $(VENV)/bin/pytest
 
-# Platform-specific path separator for --add-data
+# Detect platform-specific paths
 ifeq ($(OS),Windows_NT)
+    PYTHON = $(VENV)\Scripts\python.exe
+    PIP = $(VENV)\Scripts\pip.exe
+    PYINSTALLER = $(VENV)\Scripts\pyinstaller.exe
+    RUFF = $(VENV)\Scripts\ruff.exe
+    PYTEST = $(VENV)\Scripts\pytest.exe
     ADD_DATA = $(ICON);assets
 else
+    PYTHON = $(VENV)/bin/python3
+    PIP = $(VENV)/bin/pip
+    PYINSTALLER = $(VENV)/bin/pyinstaller
+    RUFF = $(VENV)/bin/ruff
+    PYTEST = $(VENV)/bin/pytest
     ADD_DATA = $(ICON):assets
 endif
 
@@ -41,9 +46,9 @@ help:
 # Create virtual environment and install dependencies
 .PHONY: setup
 setup:
-	python3 -m venv $(VENV)
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	python -m venv $(VENV)
+	$(PYTHON) -m pip install --upgrade pip
+	$(PYTHON) -m pip install -r requirements.txt
 
 # Run the app using the virtual environment
 .PHONY: run
@@ -53,12 +58,12 @@ run:
 # Lint source code
 .PHONY: lint
 lint:
-	$(RUFF) check
+	$(RUFF) check .
 
 # Format source code
 .PHONY: format
 format:
-	$(RUFF) format
+	$(RUFF) format .
 
 # Run tests
 .PHONY: test
@@ -81,14 +86,16 @@ dist: build
 # Clean all temp files and caches
 .PHONY: clean
 clean:
-	find . -type f -name '*.pyc' -delete
-	find . -type d -name '__pycache__' -exec rm -r {} +
-	rm -rf .pytest_cache .mypy_cache build dist *.spec
+	@echo "🧹 Cleaning up..."
+	@find . -type f -name '*.pyc' -delete || del /s *.pyc 2>nul
+	@find . -type d -name '__pycache__' -exec rm -r {} + || rmdir /s /q __pycache__ 2>nul
+	@rm -rf .pytest_cache .mypy_cache build dist *.spec || \
+		del /s /q .pytest_cache .mypy_cache build dist *.spec 2>nul
 
 # Freeze dependencies
 .PHONY: freeze
 freeze:
-	$(PIP) freeze > requirements.txt
+	$(PYTHON) -m pip freeze > requirements.txt
 
 # Clean and rebuild
 .PHONY: rebuild
