@@ -9,11 +9,11 @@ VENV = venv
 
 # Detect platform-specific paths
 ifeq ($(OS),Windows_NT)
-    PYTHON = $(VENV)\Scripts\python.exe
-    PIP = $(VENV)\Scripts\pip.exe
-    PYINSTALLER = $(VENV)\Scripts\pyinstaller.exe
-    RUFF = $(VENV)\Scripts\ruff.exe
-    PYTEST = $(VENV)\Scripts\pytest.exe
+    PYTHON = $(VENV)/Scripts/python.exe
+    PIP = $(VENV)/Scripts/pip.exe
+    PYINSTALLER = $(VENV)/Scripts/pyinstaller.exe
+    RUFF = $(VENV)/Scripts/ruff.exe
+    PYTEST = $(VENV)/Scripts/pytest.exe
     ADD_DATA = $(ICON);assets
 else
     PYTHON = $(VENV)/bin/python3
