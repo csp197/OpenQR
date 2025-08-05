@@ -2,6 +2,7 @@ name: Build and Release OpenQR executables
 
 on:
   push:
+    branches: ["feature/pyqt6"]
   pull_request:
 
 permissions:
@@ -126,7 +127,7 @@ jobs:
   release:
     needs: [build-windows]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/feature/pyqt6' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
 
