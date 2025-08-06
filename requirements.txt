@@ -1,5 +1,4 @@
 altgraph==0.17.4
-appdirs==1.4.4
 iniconfig==2.1.0
 keyboard==0.13.5
 macholib==1.16.3

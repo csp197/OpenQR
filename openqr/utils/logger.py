@@ -1,10 +1,10 @@
 import logging
 import os
 
-try:
-    from appdirs import user_config_dir
-except ImportError:
-    user_config_dir = None
+# try:
+#     from appdirs import user_config_dir
+# except ImportError:
+#     user_config_dir = None
 
 
 def setup_logger():
@@ -12,10 +12,10 @@ def setup_logger():
     logger.setLevel(logging.DEBUG)
 
     # Determine log file path
-    if user_config_dir:
-        config_dir = user_config_dir("openqr", "openqr")
-    else:
-        config_dir = os.path.expanduser("~/.openqr")
+    # if user_config_dir:
+    #     config_dir = user_config_dir("openqr", "openqr")
+    # else:
+    config_dir = os.path.expanduser("~/.openqr")
     os.makedirs(config_dir, exist_ok=True)
     log_path = os.path.join(config_dir, "openqr.log")
 

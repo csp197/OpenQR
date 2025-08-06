@@ -1,5 +1,9 @@
 # OpenQR - QR Code Listener & URL Opener
 
+<p align="center">
+  <img src="assets/OpenQR_screenshot.png" alt="OpenQR_screenshot">
+</p>
+
 OpenQR is a PyQt6 application for listening to QR code scans (via HID/keyboard wedge scanners) and automatically opening URLs, with advanced customization, history, and safety features.
 
 ## Features
