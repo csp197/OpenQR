@@ -40,10 +40,10 @@ from openqr.utils import logger
 from PIL import Image
 
 
-try:
-    from appdirs import user_config_dir
-except ImportError:
-    user_config_dir = None
+# try:
+#     from appdirs import user_config_dir
+# except ImportError:
+#     user_config_dir = None
 
 log = logger.setup_logger()
 
@@ -84,10 +84,10 @@ class OpenQRApp(QMainWindow):
         self.setFocus()
 
     def get_domains_file_path(self):
-        if user_config_dir:
-            config_dir = user_config_dir("openqr", "openqr")
-        else:
-            config_dir = os.path.expanduser("~/.openqr")
+        # if user_config_dir:
+        #     config_dir = user_config_dir("openqr", "openqr")
+        # else:
+        config_dir = os.path.expanduser("~/.openqr")
         os.makedirs(config_dir, exist_ok=True)
         log.debug(f"Config file path: {config_dir}")
         return os.path.join(config_dir, "openqr_domains.json")
@@ -374,9 +374,9 @@ class OpenQRApp(QMainWindow):
         btn_row.addWidget(self.copy_button)
         generator_layout.addLayout(btn_row)
         generator_layout.addStretch()
-        self.upload_logo_button = QPushButton("Upload Image")
+        self.upload_logo_button = QPushButton("Upload Logo")
         self.upload_logo_button.clicked.connect(self.upload_logo_image)
-        self.remove_logo_button = QPushButton("Remove Image")
+        self.remove_logo_button = QPushButton("Remove Logo")
         self.remove_logo_button.clicked.connect(self.remove_logo_image)
         logo_btn_row = QHBoxLayout()
         logo_btn_row.addWidget(self.upload_logo_button)
@@ -478,6 +478,7 @@ class OpenQRApp(QMainWindow):
         if not self._scanner_event_filter and self.qr_code_listener.is_listening:
             self._scanner_event_filter = ScannerEventFilter(self)
             self.installEventFilter(self._scanner_event_filter)
+            self._scanner_event_filter.start_global_keyboard_hook()
             log.info("Scanner event filter installed.")
 
     def remove_scanner_event_filter(self):
