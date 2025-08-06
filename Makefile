@@ -84,6 +84,7 @@ else
 		--name $(APP_NAME) \
 		--icon=$(ICON) \
 		--add-data "$(ADD_DATA)"
+endif
 
 # Show build result
 .PHONY: dist

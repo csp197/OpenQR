@@ -475,15 +475,18 @@ class OpenQRApp(QMainWindow):
             self.stop_btn.setEnabled(False)
 
     def install_scanner_event_filter(self):
-        if self._scanner_event_filter is None:
+        if not self._scanner_event_filter and self.qr_code_listener.is_listening:
             self._scanner_event_filter = ScannerEventFilter(self)
             self.installEventFilter(self._scanner_event_filter)
+            log.info("Scanner event filter installed.")
 
     def remove_scanner_event_filter(self):
-        if self._scanner_event_filter is not None:
+        if self._scanner_event_filter:
             self.removeEventFilter(self._scanner_event_filter)
+            self._scanner_event_filter.stop_global_keyboard_hook()
             self._scanner_event_filter = None
             self._scanner_keystroke_buffer = ""
+            log.info("Scanner event filter removed and global hook stopped.")
 
     def process_scanned_data(self, data):
         # Here you strip prefix/suffix and do what you want with scanned data

@@ -1,64 +1,61 @@
-import sys
 from PyQt6.QtCore import QObject, QEvent
+import keyboard  # pip install keyboard
 from openqr.utils import logger
 
 log = logger.setup_logger()
-
-
-import keyboard  # Global keyboard hook for Windows
-
 
 class ScannerEventFilter(QObject):
     def __init__(self, outer):
         super().__init__()
         self.outer = outer
-        self._global_hook_enabled = False
-
-        if sys.platform.startswith("win"):
-            self.start_global_keyboard_hook()
+        self._listening = False
 
     def start_global_keyboard_hook(self):
-        if not self._global_hook_enabled:
-            log.info("Starting global keyboard hook on Windows")
-            keyboard.hook(self._on_global_key_event)
-            self._global_hook_enabled = True
+        if not self._listening:
+            log.info("Starting global keyboard hook.")
+            # Hook keyboard globally, call self._on_key_event on each key press
+            keyboard.hook(self._on_key_event)
+            self._listening = True
 
     def stop_global_keyboard_hook(self):
-        if self._global_hook_enabled:
-            log.info("Stopping global keyboard hook on Windows")
+        if self._listening:
+            log.info("Stopping global keyboard hook.")
             keyboard.unhook_all()
-            self._global_hook_enabled = False
+            self._listening = False
 
-    def _on_global_key_event(self, event):
-        # Only handle key down events
+    def _on_key_event(self, event):
+        # We only want key down events (not key up)
         if event.event_type == "down":
             key = event.name
-            if key is None:
-                return
-
-            # Normalize Enter keys and whitespace keys to a suffix marker
-            suffix_keys = {"enter", "return", "tab", "space"}
-
-            # Append key text or suffix character
-            if key in suffix_keys:
-                suffix = self.outer.scanner_suffix or "\n"
-                self.outer._scanner_keystroke_buffer += suffix
-                if self.outer._scanner_keystroke_buffer.endswith(suffix):
-                    data = self.outer._scanner_keystroke_buffer
-                    self.outer._scanner_keystroke_buffer = ""
-                    self.outer.qr_code_listener.process_scanned_data(data)
+            # Handle special keys that might be used as suffixes
+            # For regular character keys, just append them
+            if len(key) == 1:
+                self.outer._scanner_keystroke_buffer += key
             else:
-                # Append normal key character (handle single char keys only)
-                if len(key) == 1:
-                    self.outer._scanner_keystroke_buffer += key
+                # Map special keys like 'enter', 'tab', 'space' to characters if needed
+                if key == "enter":
+                    self.outer._scanner_keystroke_buffer += "\n"
+                elif key == "tab":
+                    self.outer._scanner_keystroke_buffer += "\t"
+                elif key == "space":
+                    self.outer._scanner_keystroke_buffer += " "
+                else:
+                    # Ignore other special keys
+                    return
+
+            suffix = self.outer.scanner_suffix
+            if suffix and self.outer._scanner_keystroke_buffer.endswith(suffix):
+                data = self.outer._scanner_keystroke_buffer
+                self.outer._scanner_keystroke_buffer = ""
+                log.info(f"Suffix detected, processing data: {data}")
+                self.outer.qr_code_listener.process_scanned_data(data)
 
     def eventFilter(self, obj, event):
-        # Qt event filter for macOS and focused app
+        # Also keep GUI eventFilter if you want local keyboard capture
         if event.type() == QEvent.Type.KeyPress:
             key = event.text()
             if key:
                 self.outer._scanner_keystroke_buffer += key
-                # Check for suffix
                 suffix = self.outer.scanner_suffix
                 if suffix and self.outer._scanner_keystroke_buffer.endswith(suffix):
                     data = self.outer._scanner_keystroke_buffer
