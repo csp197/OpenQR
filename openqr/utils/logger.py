@@ -1,30 +1,38 @@
-# logger.py
 import logging
-import sys
+import os
+try:
+    from appdirs import user_config_dir
+except ImportError:
+    user_config_dir = None
 
+def setup_logger():
+    logger = logging.getLogger("OpenQR")
+    logger.setLevel(logging.DEBUG)
 
-def setup_logger(name: str = "openqr") -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)  # Set to DEBUG for detailed logs
+    # Determine log file path
+    if user_config_dir:
+        config_dir = user_config_dir("openqr", "openqr")
+    else:
+        config_dir = os.path.expanduser("~/.openqr")
+    os.makedirs(config_dir, exist_ok=True)
+    log_path = os.path.join(config_dir, "openqr.log")
 
-    # Prevent adding handlers multiple times in dev environment
-    if not logger.handlers:
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-        # File handler
-        file_handler = logging.FileHandler("openqr.log")
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(formatter)
+    # File handler
+    fh = logging.FileHandler(log_path)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
 
-        # Stream handler (console)
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.DEBUG)
-        stream_handler.setFormatter(formatter)
+    # Stream (stdout) handler
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.INFO)
+    sh.setFormatter(formatter)
 
-        # Add handlers to logger
-        logger.addHandler(file_handler)
-        logger.addHandler(stream_handler)
+    # Avoid duplicate handlers
+    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == fh.baseFilename for h in logger.handlers):
+        logger.addHandler(fh)
+    if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
+        logger.addHandler(sh)
 
     return logger

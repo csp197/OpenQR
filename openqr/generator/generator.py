@@ -9,9 +9,13 @@ from pathvalidate import (
     sanitize_filename,
 )  # Library to make sure filenames are safe for file systems
 
-from PyQt5.QtGui import QImage
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtGui import QImage
+from PyQt6.QtWidgets import QApplication
 # from PIL.ImageQt import ImageQt
+
+from openqr.utils import logger
+
+log = logger.setup_logger()
 
 
 class QRCodeGenerator:
@@ -32,30 +36,21 @@ class QRCodeGenerator:
         self.temp_dir.mkdir(
             parents=True, exist_ok=True
         )  # Create the directory if it doesn't exist
+        log.info("QRCodeGenerator initialized.")
 
-    def _get_cache_path(self, url):
+    def _get_cache_path(self, url, fill_color="black", back_color="white"):
         """
-        Generate a unique and filesystem-safe cache file path for a given URL.
-
-        Parameters:
-            url (str): The URL to be encoded.
-
-        Returns:
-            Path: Full path to the expected cached QR code image.
-
-        Raises:
-            ValueError: If the URL is not valid.
+        Generate a unique and filesystem-safe cache file path for a given URL and color combination.
         """
+        log.debug(f"Generating cache path for URL: {url}, fill_color: {fill_color}, back_color: {back_color}")
         if not self.validate_url(url):
             raise ValueError("URL is not valid")
-
-        safe_url = sanitize_filename(url)  # Sanitize to remove any unsafe characters
-        truncated_url_part = safe_url[:30]  # Limit filename to first 30 characters
-        url_hash = hashlib.sha256(safe_url.encode("utf-8")).hexdigest()[
-            :16
-        ]  # Generate a short hash for uniqueness
-        encoded_url = f"qr_{truncated_url_part}_{url_hash}.png"  # Final filename
-        full_path = self.temp_dir / encoded_url  # Combine with temp directory path
+        safe_url = sanitize_filename(url)
+        truncated_url_part = safe_url[:30]
+        color_part = f"_{sanitize_filename(str(fill_color))}_{sanitize_filename(str(back_color))}"
+        url_hash = hashlib.sha256((safe_url + color_part).encode("utf-8")).hexdigest()[:16]
+        encoded_url = f"qr_{truncated_url_part}{color_part}_{url_hash}.png"
+        full_path = self.temp_dir / encoded_url
         return full_path
 
     @staticmethod
@@ -73,8 +68,11 @@ class QRCodeGenerator:
             bool: True if the URL is valid, False otherwise.
         """
         try:
-            return validators.url(url)
-        except Exception:
+            result = validators.url(url)
+            log.debug(f"Validating URL: {url} -> {result}")
+            return result
+        except Exception as e:
+            log.error(f"Exception during URL validation: {e}")
             return False
 
     def generate_qr_code(self, url, fill_color="black", back_color="white"):
@@ -92,13 +90,14 @@ class QRCodeGenerator:
         Raises:
             ValueError: If the URL is invalid.
         """
+        log.info(f"Generating QR code for URL: {url}, fill_color: {fill_color}, back_color: {back_color}")
         if not self.validate_url(url):
+            log.warning(f"Invalid URL for QR code generation: {url}")
             raise ValueError("URL is not valid")
 
-        cached_qr_path = self._get_cache_path(
-            url
-        )  # Determine file path for the QR code
+        cached_qr_path = self._get_cache_path(url, fill_color, back_color)
         if cached_qr_path.exists():
+            log.info(f"Loading QR code from cache: {cached_qr_path}")
             return Image.open(cached_qr_path)  # If already exists, load from disk
 
         # Create and configure the QR code generator
@@ -117,6 +116,7 @@ class QRCodeGenerator:
         ).get_image()
 
         # Save the generated image to disk (for caching)
+        log.info(f"Saving generated QR code to cache: {cached_qr_path}")
         with cached_qr_path.open("wb") as f:
             qr_image.save(f, "PNG")
 
@@ -130,6 +130,7 @@ class QRCodeGenerator:
             qr_code (Image.Image): The PIL Image of the QR code.
             filepath (str): The destination file path.
         """
+        log.info(f"Saving QR code to file: {filepath}")
         qr_code.save(filepath, format="PNG")
 
     def copy_qr_code_to_clipboard(self, qr_code: Image.Image) -> None:
@@ -142,6 +143,7 @@ class QRCodeGenerator:
         Raises:
             RuntimeError: If the QApplication instance is not properly initialized.
         """
+        log.info("Copying QR code to clipboard.")
         # Convert PIL Image to RGB format
         qr_rgb = qr_code.convert("RGB")
         w, h = qr_rgb.size
@@ -149,11 +151,12 @@ class QRCodeGenerator:
         bytes_per_line = 3 * w
 
         # Create QImage from raw data
-        qimage = QImage(data, w, h, bytes_per_line, QImage.Format_RGB888)
+        qimage = QImage(data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
 
         # Get clipboard and set image
         clipboard = QApplication.clipboard()
         if clipboard is None:
+            log.error("QApplication must be initialized before using clipboard.")
             raise RuntimeError(
                 "QApplication must be initialized before using clipboard."
             )
