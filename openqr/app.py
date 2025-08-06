@@ -3,6 +3,7 @@ import validators
 import json
 from urllib.parse import urlparse
 import datetime
+import webbrowser
 
 from PyQt6.QtWidgets import (
     QMainWindow, QPushButton, QStatusBar, QApplication,
@@ -18,6 +19,7 @@ from openqr.constants import (
     START_LISTENING_MSG, STOP_LISTENING_MSG,
     INACTIVE_LISTENER_MSG, ACTIVE_LISTENER_MSG
 )
+from openqr.scanner.scanner_event_filter import ScannerEventFilter
 from openqr.utils import logger
 
 from PIL import Image
@@ -46,7 +48,7 @@ class OpenQRApp(QMainWindow):
         self.pref_max_history = 20
         self.allow_domains = []
         self.deny_domains = []
-        self.safe_protocols = ["http", "https"]
+        # self.safe_protocols = ["http", "https"]
         self.logo_image_path = None
         self.logo_image = None
         self.domains_file = self.get_domains_file_path()
@@ -60,6 +62,8 @@ class OpenQRApp(QMainWindow):
         log.info("Signal connections established.")
         self._scanner_keystroke_buffer = ""
         self._scanner_event_filter = None
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocus()
 
     def get_domains_file_path(self):
         if user_config_dir:
@@ -76,7 +80,7 @@ class OpenQRApp(QMainWindow):
                 data = json.load(f)
                 self.allow_domains = data.get("allow", [])
                 self.deny_domains = data.get("deny", [])
-                self.safe_protocols = data.get("safe_protocols", ["http", "https"])
+                # self.safe_protocols = data.get("safe_protocols", ["http", "https"])
                 self.logo_image_path = data.get("logo_image_path", None)
                 if self.logo_image_path and os.path.exists(self.logo_image_path):
                     self.logo_image = Image.open(self.logo_image_path)
@@ -87,12 +91,12 @@ class OpenQRApp(QMainWindow):
             log.warning(f"Failed to load domain lists: {e}")
             self.allow_domains = []
             self.deny_domains = []
-            self.safe_protocols = ["http", "https"]
+            # self.safe_protocols = ["http", "https"]
             self.logo_image_path = None
             self.logo_image = None
 
     def save_domain_lists(self):
-        data = {"allow": self.allow_domains, "deny": self.deny_domains, "safe_protocols": self.safe_protocols, "logo_image_path": self.logo_image_path, "scan_history": self.scan_history}
+        data = {"allow": self.allow_domains, "deny": self.deny_domains, "logo_image_path": self.logo_image_path, "scan_history": self.scan_history}
         try:
             with open(self.domains_file, "w") as f:
                 json.dump(data, f, indent=2)
@@ -463,42 +467,98 @@ Keep an eye on the status bar for real-time messages like scanning state, succes
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
 
+    # def install_scanner_event_filter(self):
+    #     if self._scanner_event_filter is None:
+    #         log.debug("Installing scanner event filter.")
+    #         class ScannerEventFilter(QObject):
+    #             def __init__(self, outer, prefix="", suffix="\r"):
+    #                 super().__init__()
+    #                 self.outer = outer
+    #                 self.prefix = prefix
+    #                 self.suffix = suffix
+    #                 self.buffer = ""
+
+    #             def eventFilter(self, obj, event):
+    #                 if event.type() == QEvent.Type.KeyPress:
+    #                     key_text = event.text()
+    #                     key_code = event.key()
+    #                     log.debug(f"Key pressed: key_code={key_code}, text={repr(key_text)}")
+
+    #                     if key_text:
+    #                         self.buffer += key_text
+    #                     else:
+    #                         # Handle Enter keys explicitly as '\r'
+    #                         if key_code == Qt.Key.Key_Return or key_code == Qt.Key.Key_Enter:
+    #                             self.buffer += '\r'
+
+    #                     log.debug(f"Buffer: {repr(self.buffer)}")
+
+    #                     # Check prefix
+    #                     if self.prefix and not self.buffer.startswith(self.prefix):
+    #                         # Ignore buffer if it does not start with prefix yet
+    #                         pass
+
+    #                     # Check suffix
+    #                     if self.suffix and self.buffer.endswith(self.suffix):
+    #                         full_data = self.buffer
+    #                         log.info(f"Suffix detected, processing scanned data: {repr(full_data)}")
+    #                         self.buffer = ""  # Reset buffer
+    #                         self.outer.process_scanned_data(full_data)
+
+    #                     return False  # Let other handlers process event normally
+    #                 return False
+    #         self._scanner_event_filter = ScannerEventFilter(self)
+    #         QApplication.instance().installEventFilter(self._scanner_event_filter)
+    #         # Remove focus from the main window to prevent key events from being captured by other widgets
+    #         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
     def install_scanner_event_filter(self):
         if self._scanner_event_filter is None:
             log.debug("Installing scanner event filter.")
-            class ScannerEventFilter(QObject):
-                def __init__(self, outer):
-                    super().__init__()
-                    self.outer = outer
-                def eventFilter(self, obj, event):
-                    if event.type() == QEvent.Type.KeyPress:
-                        key = event.text()
-                        if key:
-                            self.outer._scanner_keystroke_buffer += key
-                            log.debug(f"Keystroke buffer: {repr(self.outer._scanner_keystroke_buffer)}")
-                            # Prefix feedback
-                            prefix = self.outer.scanner_prefix
-                            suffix = self.outer.scanner_suffix
-                            buf = self.outer._scanner_keystroke_buffer
-                            if prefix and buf.startswith(prefix) and (not suffix or not buf.endswith(suffix)):
-                                self.outer.update_status_indicator(prefix_detected=True)
-                            # Check for suffix
-                            if suffix and buf.endswith(suffix):
-                                data = buf
-                                self.outer._scanner_keystroke_buffer = ""
-                                log.info(f"Suffix detected, processing scanned data: {repr(data)}")
-                                self.outer.qr_code_listener.process_scanned_data(data)
-                                self.outer.update_status_indicator(prefix_detected=False, url=data[len(prefix):-len(suffix)] if prefix and suffix and data.startswith(prefix) and data.endswith(suffix) else None)
-                    return False  # Continue normal event processing
             self._scanner_event_filter = ScannerEventFilter(self)
-            self.installEventFilter(self._scanner_event_filter)
+            app = QApplication.instance()
+            if app is None:
+                log.error("Cannot install event filter: QApplication must not be initialized")
+                return
+            app.installEventFilter(self._scanner_event_filter)
+            self.set_status_bar("Keystroke listener installed.", "#388e3c")
+
+
+    def process_scanned_data(self, data):
+        # Here you strip prefix/suffix and do what you want with scanned data
+        prefix = self.scanner_prefix
+        suffix = self.scanner_suffix
+        log.info(f"Processing scanned data: {repr(data)}")
+        if prefix and not data.startswith(prefix):
+            log.info("Prefix not detected, ignoring data")
+            return
+        if suffix and not data.endswith(suffix):
+            log.info("Suffix not detected, ignoring data")
+            return
+
+        # Strip prefix and suffix
+        content = data
+        if prefix:
+            content = content[len(prefix):]
+        if suffix:
+            content = content[:-len(suffix)]
+
+        log.info(f"Scanned content: {repr(content)}")
+        log.info(f"Final scanned content: {content}")
+
+    # def remove_scanner_event_filter(self):
+    #     if self._scanner_event_filter is not None:
+    #         log.debug("Removing scanner event filter.")
+    #         self.removeEventFilter(self._scanner_event_filter)
+    #         self._scanner_event_filter = None
+    #         self._scanner_keystroke_buffer = ""
 
     def remove_scanner_event_filter(self):
         if self._scanner_event_filter is not None:
             log.debug("Removing scanner event filter.")
-            self.removeEventFilter(self._scanner_event_filter)
+            QApplication.instance().removeEventFilter(self._scanner_event_filter)
             self._scanner_event_filter = None
-            self._scanner_keystroke_buffer = ""
+
 
     def validate_url(self):
         url = self.url_input.text().strip()
@@ -596,11 +656,10 @@ Keep an eye on the status bar for real-time messages like scanning state, succes
 
     def _on_url_scanned(self, url):
         log.info(f"Scanned URL: {url}")
-        from validators import url as validate_url
         parsed = urlparse(url)
         log.debug(f"Parsed URL: scheme={parsed.scheme}, netloc={parsed.netloc}, path={parsed.path}")
         # Only validate URL
-        if not validate_url(url):
+        if not validators.url(url):
             log.warning(f"Blocked by invalid URL: {url}")
             QMessageBox.warning(self, "Invalid URL", f"The scanned data is not a valid URL:\n{url}")
             return
@@ -645,7 +704,7 @@ Keep an eye on the status bar for real-time messages like scanning state, succes
                     self.allow_domains.append(domain)
                     self.save_domain_lists()
                     log.info(f"Domain added to allow list: {domain}")
-            import webbrowser
+
             log.info(f"Opening URL in browser: {url}")
             webbrowser.open(url)
 

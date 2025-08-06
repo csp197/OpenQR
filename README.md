@@ -1,3 +1,8 @@
+TODO:
+1) fix scanner (check event filter?)
+2) if the prefix and suffix are set, then the qr code generation should also allow the same values without getting interference from validator
+3) see how to add program details (like author name, version number, etc.)
+
 # OpenQR - QR Code Listener & URL Opener
 
 OpenQR is a PyQt6 application for listening to QR code scans (via HID/keyboard wedge scanners) and automatically opening URLs, with advanced customization, history, and safety features.
