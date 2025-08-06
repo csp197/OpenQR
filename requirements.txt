@@ -1,5 +1,5 @@
 altgraph==0.17.4
-hid==1.0.8
+appdirs==1.4.4
 iniconfig==2.1.0
 macholib==1.16.3
 packaging==25.0
