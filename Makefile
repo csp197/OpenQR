@@ -76,7 +76,7 @@ build:
 ifeq ($(OS),Windows_NT)
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
-		--icon=assets/openqr_icon.ico \
+		--icon=assets/openqr_icon.png \
 		--add-data "$(ADD_DATA)" \
 		--version-file version.txt
 else
