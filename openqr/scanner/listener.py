@@ -6,7 +6,9 @@ log = logger.setup_logger()
 
 
 class QRCodeListener(QObject):
-    url_scanned = pyqtSignal(str)  # Emitted when a QR code is successfully scanned (URL)
+    url_scanned = pyqtSignal(
+        str
+    )  # Emitted when a QR code is successfully scanned (URL)
     url_opened = pyqtSignal(str, str)  # title, message
 
     def __init__(self, timeout=1.0, allowed_domains=None, prefix="", suffix="\r"):
@@ -16,7 +18,9 @@ class QRCodeListener(QObject):
         self.prefix = prefix
         self.suffix = suffix
 
-        log.info(f"QRCodeListener initialized with prefix={repr(prefix)}, suffix={repr(suffix)}")
+        log.info(
+            f"QRCodeListener initialized with prefix={repr(prefix)}, suffix={repr(suffix)}"
+        )
 
     def set_prefix_suffix(self, prefix, suffix):
         self.prefix = prefix
@@ -53,9 +57,9 @@ class QRCodeListener(QObject):
         # Strip prefix and suffix
         url = data
         if self.prefix:
-            url = url[len(self.prefix):]
+            url = url[len(self.prefix) :]
         if self.suffix:
-            url = url[:-len(self.suffix)]
+            url = url[: -len(self.suffix)]
 
         log.info(f"Prefix and suffix detected. Emitting scanned URL: {url}")
         self.emit_url_scanned(url)

@@ -7,6 +7,7 @@ def print_help():
     """
     print(help_text.strip())
 
+
 def print_version():
     version_text = """
     OpenQR version 0.0.1

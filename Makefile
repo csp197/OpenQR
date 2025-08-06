@@ -73,6 +73,13 @@ test:
 # Build the app using PyInstaller
 .PHONY: build
 build:
+ifeq ($(OS),Windows_NT)
+	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
+		--name $(APP_NAME) \
+		--icon=assets/openqr_icon.ico \
+		--add-data "$(ADD_DATA)" \
+		--version-file version.txt
+else
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
 		--icon=$(ICON) \

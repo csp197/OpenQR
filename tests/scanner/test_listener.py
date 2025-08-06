@@ -2,6 +2,7 @@ import pytest
 from pytestqt.exceptions import TimeoutError
 from openqr.scanner.listener import QRCodeListener
 
+
 @pytest.fixture
 def listener():
     return QRCodeListener(prefix="qr_", suffix="\n")
@@ -40,6 +41,7 @@ def test_prefix_suffix_extraction(listener, qtbot):
     with qtbot.waitSignal(listener.url_scanned, timeout=1000) as blocker:
         listener.process_scanned_data("https://bare.com")
     assert blocker.args == ["https://bare.com"]
+
 
 def test_initial_state(listener):
     assert len(listener.buffer) == 0
