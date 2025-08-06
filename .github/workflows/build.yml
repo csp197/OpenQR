@@ -74,51 +74,10 @@ jobs:
           name: OpenQR-macos-executable
           path: dist/OpenQR
 
-  build-linux:
-    runs-on: ubuntu-latest
-    outputs:
-      artifact-path: dist/OpenQR
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.10"
-
-      - name: Setup virtual environment and install dependencies
-        run: make setup
-
-      - name: Install Qt dependencies (for PyQt6 / PySide6)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libegl1 \
-            libgl1 \
-            libxkbcommon-x11-0 \
-            libxcb-xinerama0
-
-      - name: Run tests
-        run: pytest -p no:qt
-
-      - name: Build Linux executable
-        run: make dist
-
-      - name: Smoke test Linux executable
-        run: |
-          ls -la dist/
-          ./dist/OpenQR --help || echo "Executed successfully"
-
-      - name: Upload Linux executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenQR-linux-executable
-          path: dist/OpenQR
-
   release:
-    needs: [build-windows]
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/feature/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
 
@@ -132,12 +91,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: OpenQR-macos-executable
-          path: dist/
-
-      - name: Download Linux executable
-        uses: actions/download-artifact@v4
-        with:
-          name: OpenQR-linux-executable
           path: dist/
 
       - name: Create and push tag
@@ -155,6 +108,9 @@ jobs:
           body: |
             Automated release of OpenQR executables:
             - Windows (OpenQR.exe)
-          files: dist/OpenQR.exe
+            - MacOS (OpenQR.app)
+          files: |
+            dist/OpenQR.exe
+            dist/OpenQR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

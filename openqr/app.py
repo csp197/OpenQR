@@ -8,17 +8,14 @@ import webbrowser
 from PyQt6.QtWidgets import (
     QMainWindow, QPushButton, QStatusBar, QApplication,
     QVBoxLayout, QWidget, QLabel, QLineEdit, QHBoxLayout,
-    QFileDialog, QMessageBox, QGroupBox, QColorDialog, QListWidget, QListWidgetItem, QMenuBar, QDialog, QCheckBox, QComboBox, QSpinBox, QFormLayout, QInputDialog, QTextBrowser
+    QFileDialog, QMessageBox, QGroupBox, QColorDialog, QListWidget, QDialog, QCheckBox, QComboBox, QSpinBox, QFormLayout, QInputDialog, QTextBrowser
 )
-from PyQt6.QtGui import QPixmap, QImage, QIcon, QAction
-from PyQt6.QtCore import Qt, QObject, QEvent
+from PyQt6.QtGui import QPixmap, QImage, QIcon
+from PyQt6.QtCore import Qt
 
 from openqr.generator.generator import QRCodeGenerator
 from openqr.scanner.listener import QRCodeListener
-from openqr.constants import (
-    START_LISTENING_MSG, STOP_LISTENING_MSG,
-    INACTIVE_LISTENER_MSG, ACTIVE_LISTENER_MSG
-)
+from openqr.constants import HELP_MESSAGE
 from openqr.scanner.scanner_event_filter import ScannerEventFilter
 from openqr.utils import logger
 
@@ -384,45 +381,6 @@ class OpenQRApp(QMainWindow):
             self.prefix_feedback.setOpenExternalLinks(False)
 
     def show_help_dialog(self):
-        HELP_MESSAGE = """
-<b>🆘 OpenQR Help</b><br><br>
-
-<b>🎧 Listening Mode:</b><br>
-Click the <i>'Start Listening'</i> button to begin capturing QR scans from your hardware scanner.
-Make sure your scanner is configured as an HID (keyboard emulation) device. When listening, scanned URLs
-will be automatically processed and displayed.<br><br>
-
-<b>🧩 Prefix/Suffix Handling:</b><br>
-Some scanners add extra characters before or after a scanned code (like ENTER or custom text).
-Use Scanner Settings to define a prefix and/or suffix to trim from incoming scan data, ensuring cleaner URL detection.<br><br>
-
-<b>🌐 Domain Management:</b><br>
-Whitelist or blacklist domains based on your preferences. You can control which scanned URLs are considered valid,
-and even block unwanted domains for safety. Accessible under <i>Settings > Domain Management</i>.<br><br>
-
-<b>🔐 URL Safety Settings:</b><br>
-Define which URL protocols are considered safe (e.g., <code>https</code>, <code>mailto</code>).
-This helps filter out suspicious or insecure links during scanning.<br><br>
-
-<b>🖼️ Upload Logo:</b><br>
-Add a personal or brand logo to your generated QR codes. This can be done from the QR generator section.
-Ensure your logo is high-contrast to maintain QR code readability.<br><br>
-
-<b>🧪 QR Generator:</b><br>
-Enter a URL to generate a QR code. You can customize its foreground and background colors.
-Once generated, you can save it or copy it directly to your clipboard.<br><br>
-
-<b>📜 Scan History:</b><br>
-Every scanned URL is stored locally in your scan history. Access the history from the sidebar to view,
-copy, or clear previous scans.<br><br>
-
-<b>ℹ️ Status Bar:</b><br>
-Keep an eye on the status bar for real-time messages like scanning state, success confirmations, or warnings.<br><br>
-
-<b>💡 Tips:</b><br>
-• Use high-resolution screens for best QR readability.<br>
-• If scans aren’t detected, ensure your scanner outputs plain text and no conflicting key mappings.<br>
-"""
         dialog = QDialog(self)
         dialog.setWindowTitle("Help")
         dialog.resize(800, 400)  # Landscape mode
@@ -467,61 +425,17 @@ Keep an eye on the status bar for real-time messages like scanning state, succes
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
 
-    # def install_scanner_event_filter(self):
-    #     if self._scanner_event_filter is None:
-    #         log.debug("Installing scanner event filter.")
-    #         class ScannerEventFilter(QObject):
-    #             def __init__(self, outer, prefix="", suffix="\r"):
-    #                 super().__init__()
-    #                 self.outer = outer
-    #                 self.prefix = prefix
-    #                 self.suffix = suffix
-    #                 self.buffer = ""
-
-    #             def eventFilter(self, obj, event):
-    #                 if event.type() == QEvent.Type.KeyPress:
-    #                     key_text = event.text()
-    #                     key_code = event.key()
-    #                     log.debug(f"Key pressed: key_code={key_code}, text={repr(key_text)}")
-
-    #                     if key_text:
-    #                         self.buffer += key_text
-    #                     else:
-    #                         # Handle Enter keys explicitly as '\r'
-    #                         if key_code == Qt.Key.Key_Return or key_code == Qt.Key.Key_Enter:
-    #                             self.buffer += '\r'
-
-    #                     log.debug(f"Buffer: {repr(self.buffer)}")
-
-    #                     # Check prefix
-    #                     if self.prefix and not self.buffer.startswith(self.prefix):
-    #                         # Ignore buffer if it does not start with prefix yet
-    #                         pass
-
-    #                     # Check suffix
-    #                     if self.suffix and self.buffer.endswith(self.suffix):
-    #                         full_data = self.buffer
-    #                         log.info(f"Suffix detected, processing scanned data: {repr(full_data)}")
-    #                         self.buffer = ""  # Reset buffer
-    #                         self.outer.process_scanned_data(full_data)
-
-    #                     return False  # Let other handlers process event normally
-    #                 return False
-    #         self._scanner_event_filter = ScannerEventFilter(self)
-    #         QApplication.instance().installEventFilter(self._scanner_event_filter)
-    #         # Remove focus from the main window to prevent key events from being captured by other widgets
-    #         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
     def install_scanner_event_filter(self):
-        if self._scanner_event_filter is None:
-            log.debug("Installing scanner event filter.")
-            self._scanner_event_filter = ScannerEventFilter(self)
-            app = QApplication.instance()
-            if app is None:
-                log.error("Cannot install event filter: QApplication must not be initialized")
-                return
-            app.installEventFilter(self._scanner_event_filter)
-            self.set_status_bar("Keystroke listener installed.", "#388e3c")
+            if self._scanner_event_filter is None:
+
+                self._scanner_event_filter = ScannerEventFilter(self)
+                self.installEventFilter(self._scanner_event_filter)
+
+    def remove_scanner_event_filter(self):
+            if self._scanner_event_filter is not None:
+                self.removeEventFilter(self._scanner_event_filter)
+                self._scanner_event_filter = None
+                self._scanner_keystroke_buffer = ""
 
 
     def process_scanned_data(self, data):
@@ -545,20 +459,6 @@ Keep an eye on the status bar for real-time messages like scanning state, succes
 
         log.info(f"Scanned content: {repr(content)}")
         log.info(f"Final scanned content: {content}")
-
-    # def remove_scanner_event_filter(self):
-    #     if self._scanner_event_filter is not None:
-    #         log.debug("Removing scanner event filter.")
-    #         self.removeEventFilter(self._scanner_event_filter)
-    #         self._scanner_event_filter = None
-    #         self._scanner_keystroke_buffer = ""
-
-    def remove_scanner_event_filter(self):
-        if self._scanner_event_filter is not None:
-            log.debug("Removing scanner event filter.")
-            QApplication.instance().removeEventFilter(self._scanner_event_filter)
-            self._scanner_event_filter = None
-
 
     def validate_url(self):
         url = self.url_input.text().strip()
@@ -682,8 +582,8 @@ Keep an eye on the status bar for real-time messages like scanning state, succes
         btn_row = QHBoxLayout()
         yes_btn = QPushButton("Yes")
         no_btn = QPushButton("No")
-        btn_row.addWidget(no_btn)
         btn_row.addWidget(yes_btn)
+        btn_row.addWidget(no_btn)
         layout.addLayout(btn_row)
         dialog.setLayout(layout)
         result = None
