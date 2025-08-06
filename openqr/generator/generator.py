@@ -42,13 +42,17 @@ class QRCodeGenerator:
         """
         Generate a unique and filesystem-safe cache file path for a given URL and color combination.
         """
-        log.debug(f"Generating cache path for URL: {url}, fill_color: {fill_color}, back_color: {back_color}")
+        log.debug(
+            f"Generating cache path for URL: {url}, fill_color: {fill_color}, back_color: {back_color}"
+        )
         if not self.validate_url(url):
             raise ValueError("URL is not valid")
         safe_url = sanitize_filename(url)
         truncated_url_part = safe_url[:30]
         color_part = f"_{sanitize_filename(str(fill_color))}_{sanitize_filename(str(back_color))}"
-        url_hash = hashlib.sha256((safe_url + color_part).encode("utf-8")).hexdigest()[:16]
+        url_hash = hashlib.sha256((safe_url + color_part).encode("utf-8")).hexdigest()[
+            :16
+        ]
         encoded_url = f"qr_{truncated_url_part}{color_part}_{url_hash}.png"
         full_path = self.temp_dir / encoded_url
         return full_path
@@ -90,7 +94,9 @@ class QRCodeGenerator:
         Raises:
             ValueError: If the URL is invalid.
         """
-        log.info(f"Generating QR code for URL: {url}, fill_color: {fill_color}, back_color: {back_color}")
+        log.info(
+            f"Generating QR code for URL: {url}, fill_color: {fill_color}, back_color: {back_color}"
+        )
         if not self.validate_url(url):
             log.warning(f"Invalid URL for QR code generation: {url}")
             raise ValueError("URL is not valid")

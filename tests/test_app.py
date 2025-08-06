@@ -3,6 +3,7 @@ from openqr.app import OpenQRApp
 import tempfile
 import os
 
+
 class MinimalApp(OpenQRApp):
     def __init__(self):
         # Avoid full UI init
@@ -18,16 +19,22 @@ class MinimalApp(OpenQRApp):
         self.scanner_suffix = "\n"
         self.logo_image_path = None
         self.logo_image = None
+
     def save_domain_lists(self):
         pass
+
     def load_domain_lists(self):
         pass
+
     def save_scan_history(self):
         pass
+
     def load_scan_history(self):
         pass
+
     def refresh_history_list(self):
         pass
+
     def trim_history(self):
         while len(self.scan_history) > self.pref_max_history:
             self.scan_history.pop(0)
@@ -46,12 +53,14 @@ def test_preferences_update():
     assert app.scanner_prefix == "test_"
     assert app.scanner_suffix == "\r"
 
+
 def test_blocked_domain_logic():
     app = MinimalApp()
     app.deny_domains = ["blocked.com"]
     url = "https://blocked.com/page"
     domain = "blocked.com"
     assert any(domain == d for d in app.deny_domains)
+
 
 def test_allow_list_logic():
     app = MinimalApp()
@@ -63,6 +72,7 @@ def test_allow_list_logic():
     if domain not in app.allow_domains:
         app.allow_domains.append(domain)
     assert domain in app.allow_domains
+
 
 def test_logo_upload_remove(tmp_path):
     app = MinimalApp()
@@ -79,6 +89,7 @@ def test_logo_upload_remove(tmp_path):
     assert app.logo_image_path is None
     assert app.logo_image is None
 
+
 def test_scan_history_persistence(tmp_path):
     app = MinimalApp()
     app.scan_history = [
@@ -88,14 +99,17 @@ def test_scan_history_persistence(tmp_path):
     # Simulate save/load
     file = tmp_path / "history.json"
     import json
+
     with open(file, "w") as f:
         json.dump({"scan_history": app.scan_history}, f)
     with open(file) as f:
         data = json.load(f)
     assert data["scan_history"] == app.scan_history
 
+
 def test_error_handling_invalid_url():
     app = MinimalApp()
     from validators import url as validate_url
+
     invalid = "not a url"
     assert not validate_url(invalid)

@@ -6,9 +6,27 @@ import datetime
 import webbrowser
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QPushButton, QStatusBar, QApplication,
-    QVBoxLayout, QWidget, QLabel, QLineEdit, QHBoxLayout,
-    QFileDialog, QMessageBox, QGroupBox, QColorDialog, QListWidget, QDialog, QCheckBox, QComboBox, QSpinBox, QFormLayout, QInputDialog, QTextBrowser
+    QMainWindow,
+    QPushButton,
+    QStatusBar,
+    QApplication,
+    QVBoxLayout,
+    QWidget,
+    QLabel,
+    QLineEdit,
+    QHBoxLayout,
+    QFileDialog,
+    QMessageBox,
+    QGroupBox,
+    QColorDialog,
+    QListWidget,
+    QDialog,
+    QCheckBox,
+    QComboBox,
+    QSpinBox,
+    QFormLayout,
+    QInputDialog,
+    QTextBrowser,
 )
 from PyQt6.QtGui import QPixmap, QImage, QIcon
 from PyQt6.QtCore import Qt
@@ -29,6 +47,7 @@ except ImportError:
 
 log = logger.setup_logger()
 
+
 class OpenQRApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -36,7 +55,9 @@ class OpenQRApp(QMainWindow):
         # Scanner settings
         self.scanner_prefix = ""
         self.scanner_suffix = "\r"
-        self.qr_code_listener = QRCodeListener(timeout=1.0, prefix=self.scanner_prefix, suffix=self.scanner_suffix)
+        self.qr_code_listener = QRCodeListener(
+            timeout=1.0, prefix=self.scanner_prefix, suffix=self.scanner_suffix
+        )
         self.qr_code_generator = QRCodeGenerator()
         self.qr_image = None
         # Preferences
@@ -93,7 +114,12 @@ class OpenQRApp(QMainWindow):
             self.logo_image = None
 
     def save_domain_lists(self):
-        data = {"allow": self.allow_domains, "deny": self.deny_domains, "logo_image_path": self.logo_image_path, "scan_history": self.scan_history}
+        data = {
+            "allow": self.allow_domains,
+            "deny": self.deny_domains,
+            "logo_image_path": self.logo_image_path,
+            "scan_history": self.scan_history,
+        }
         try:
             with open(self.domains_file, "w") as f:
                 json.dump(data, f, indent=2)
@@ -102,7 +128,9 @@ class OpenQRApp(QMainWindow):
             log.error(f"Failed to save domain lists: {e}")
 
     def upload_logo_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Logo/Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Logo/Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp)"
+        )
         if file_path:
             self.logo_image_path = file_path
             self.logo_image = Image.open(file_path)
@@ -155,14 +183,17 @@ class OpenQRApp(QMainWindow):
         btn_row.addWidget(cancel_btn)
         layout.addLayout(btn_row)
         dialog.setLayout(layout)
+
         # Button logic
         def add_domain(list_widget):
             text, ok = QInputDialog.getText(dialog, "Add Domain", "Domain:")
             if ok and text:
                 list_widget.addItem(text.strip())
+
         def remove_domain(list_widget):
             for item in list_widget.selectedItems():
                 list_widget.takeItem(list_widget.row(item))
+
         add_allow_btn.clicked.connect(lambda: add_domain(allow_list))
         remove_allow_btn.clicked.connect(lambda: remove_domain(allow_list))
         add_deny_btn.clicked.connect(lambda: add_domain(deny_list))
@@ -170,8 +201,12 @@ class OpenQRApp(QMainWindow):
         ok_btn.clicked.connect(dialog.accept)
         cancel_btn.clicked.connect(dialog.reject)
         if dialog.exec():
-            self.allow_domains = [allow_list.item(i).text() for i in range(allow_list.count())]
-            self.deny_domains = [deny_list.item(i).text() for i in range(deny_list.count())]
+            self.allow_domains = [
+                allow_list.item(i).text() for i in range(allow_list.count())
+            ]
+            self.deny_domains = [
+                deny_list.item(i).text() for i in range(deny_list.count())
+            ]
             self.save_domain_lists()
             log.info("Domain lists updated via dialog.")
 
@@ -200,7 +235,7 @@ class OpenQRApp(QMainWindow):
         layout.addRow(QLabel("Prefix (e.g. qr_):"), prefix_input)
         # Suffix
         suffix_input = QLineEdit()
-        suffix_input.setText(self.scanner_suffix.encode('unicode_escape').decode())
+        suffix_input.setText(self.scanner_suffix.encode("unicode_escape").decode())
         layout.addRow(QLabel("Suffix (e.g. \\r, \\n, \\t):"), suffix_input)
         # OK/Cancel
         ok_btn = QPushButton("OK")
@@ -217,8 +252,12 @@ class OpenQRApp(QMainWindow):
             self.pref_notification_type = notif_combo.currentText()
             self.pref_max_history = max_history_spin.value()
             self.scanner_prefix = prefix_input.text()
-            self.scanner_suffix = bytes(suffix_input.text(), "utf-8").decode("unicode_escape")
-            self.qr_code_listener.set_prefix_suffix(self.scanner_prefix, self.scanner_suffix)
+            self.scanner_suffix = bytes(suffix_input.text(), "utf-8").decode(
+                "unicode_escape"
+            )
+            self.qr_code_listener.set_prefix_suffix(
+                self.scanner_prefix, self.scanner_suffix
+            )
             self.trim_history()
             log.info("Preferences updated via App Preferences dialog.")
 
@@ -260,12 +299,16 @@ class OpenQRApp(QMainWindow):
         # Status indicator
         self.status_indicator = QLabel()
         self.status_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_indicator.setStyleSheet("font-size: 24px; font-weight: bold; padding: 10px;")
+        self.status_indicator.setStyleSheet(
+            "font-size: 24px; font-weight: bold; padding: 10px;"
+        )
         sidebar_layout.addWidget(self.status_indicator)
         # Prefix/suffix/URL feedback
         self.prefix_feedback = QLabel()
         self.prefix_feedback.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.prefix_feedback.setStyleSheet("font-size: 16px; color: #1976d2; padding: 5px;")
+        self.prefix_feedback.setStyleSheet(
+            "font-size: 16px; color: #1976d2; padding: 5px;"
+        )
         sidebar_layout.addWidget(self.prefix_feedback)
         # Scan history
         history_label = QLabel("Scan History:")
@@ -307,7 +350,9 @@ class OpenQRApp(QMainWindow):
         self.qr_label.setFixedSize(200, 200)
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr_label.setStyleSheet("border: 1px solid #888; background: #222;")
-        generator_layout.addWidget(self.qr_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        generator_layout.addWidget(
+            self.qr_label, alignment=Qt.AlignmentFlag.AlignCenter
+        )
         generator_layout.addSpacing(15)
         color_btn_row = QHBoxLayout()
         self.fg_color_button = QPushButton("Set QR Foreground Color")
@@ -366,10 +411,14 @@ class OpenQRApp(QMainWindow):
     def update_status_indicator(self, prefix_detected=False, url=None):
         if self.qr_code_listener.is_listening:
             self.status_indicator.setText("Listening")
-            self.status_indicator.setStyleSheet("font-size: 24px; font-weight: bold; color: #388e3c; padding: 10px;")
+            self.status_indicator.setStyleSheet(
+                "font-size: 24px; font-weight: bold; color: #388e3c; padding: 10px;"
+            )
         else:
             self.status_indicator.setText("Not Listening")
-            self.status_indicator.setStyleSheet("font-size: 24px; font-weight: bold; color: #b71c1c; padding: 10px;")
+            self.status_indicator.setStyleSheet(
+                "font-size: 24px; font-weight: bold; color: #b71c1c; padding: 10px;"
+            )
         if url:
             self.prefix_feedback.setText(f"URL detected: <a href='{url}'>{url}</a>")
             self.prefix_feedback.setOpenExternalLinks(True)
@@ -412,7 +461,7 @@ class OpenQRApp(QMainWindow):
         if self.qr_code_listener.is_listening:
             log.info("Stop listening pressed.")
             self.qr_code_listener.stop_listening()
-            self.set_status_bar("Ready", "") # #b71c1c
+            self.set_status_bar("Ready", "")  # #b71c1c
             self.remove_scanner_event_filter()
             self.update_listen_buttons()
             self.update_status_indicator()
@@ -426,17 +475,18 @@ class OpenQRApp(QMainWindow):
             self.stop_btn.setEnabled(False)
 
     def install_scanner_event_filter(self):
-            if self._scanner_event_filter is None:
-
-                self._scanner_event_filter = ScannerEventFilter(self)
-                self.installEventFilter(self._scanner_event_filter)
+        if not self._scanner_event_filter and self.qr_code_listener.is_listening:
+            self._scanner_event_filter = ScannerEventFilter(self)
+            self.installEventFilter(self._scanner_event_filter)
+            log.info("Scanner event filter installed.")
 
     def remove_scanner_event_filter(self):
-            if self._scanner_event_filter is not None:
-                self.removeEventFilter(self._scanner_event_filter)
-                self._scanner_event_filter = None
-                self._scanner_keystroke_buffer = ""
-
+        if self._scanner_event_filter:
+            self.removeEventFilter(self._scanner_event_filter)
+            self._scanner_event_filter.stop_global_keyboard_hook()
+            self._scanner_event_filter = None
+            self._scanner_keystroke_buffer = ""
+            log.info("Scanner event filter removed and global hook stopped.")
 
     def process_scanned_data(self, data):
         # Here you strip prefix/suffix and do what you want with scanned data
@@ -453,9 +503,9 @@ class OpenQRApp(QMainWindow):
         # Strip prefix and suffix
         content = data
         if prefix:
-            content = content[len(prefix):]
+            content = content[len(prefix) :]
         if suffix:
-            content = content[:-len(suffix)]
+            content = content[: -len(suffix)]
 
         log.info(f"Scanned content: {repr(content)}")
         log.info(f"Final scanned content: {content}")
@@ -494,11 +544,17 @@ class OpenQRApp(QMainWindow):
             logo = logo.resize(logo_size, Image.LANCZOS)
             # Add white border around logo
             border_size = int(logo_size[0] * 0.25)  # 25% of logo size as border
-            bordered_logo_size = (logo_size[0] + 2 * border_size, logo_size[1] + 2 * border_size)
+            bordered_logo_size = (
+                logo_size[0] + 2 * border_size,
+                logo_size[1] + 2 * border_size,
+            )
             bordered_logo = Image.new("RGBA", bordered_logo_size, (255, 255, 255, 255))
             bordered_logo.paste(logo, (border_size, border_size), mask=logo)
             # Center logo
-            pos = ((qr_w - bordered_logo_size[0]) // 2, (qr_h - bordered_logo_size[1]) // 2)
+            pos = (
+                (qr_w - bordered_logo_size[0]) // 2,
+                (qr_h - bordered_logo_size[1]) // 2,
+            )
             qr_img.paste(bordered_logo, pos, mask=bordered_logo)
             self.qr_image = qr_img
         # Convert PIL image to RGBA bytes
@@ -510,14 +566,13 @@ class OpenQRApp(QMainWindow):
         scaled_pixmap = pixmap.scaled(
             self.qr_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
+            Qt.TransformationMode.SmoothTransformation,
         )
         self.qr_label.setPixmap(scaled_pixmap)
         self.save_button.setEnabled(True)
         self.copy_button.setEnabled(True)
         self.status_bar.showMessage("QR code generated.")
         log.info("QR code generated and displayed.")
-
 
     def pil_image_to_qpixmap(self, pil_image):
         rgb_image = pil_image.convert("RGB")
@@ -528,10 +583,14 @@ class OpenQRApp(QMainWindow):
 
     def save_qr_code(self):
         if self.qr_image:
-            file_path, _ = QFileDialog.getSaveFileName(self, "Save QR Code", "", "PNG Files (*.png)")
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Save QR Code", "", "PNG Files (*.png)"
+            )
             if file_path:
                 self.qr_code_generator.save_qr_to_file(self.qr_image, file_path)
-                QMessageBox.information(self, "Saved", f"QR Code saved to:\n{file_path}")
+                QMessageBox.information(
+                    self, "Saved", f"QR Code saved to:\n{file_path}"
+                )
 
     def copy_qr_to_clipboard(self):
         if self.qr_image:
@@ -557,16 +616,24 @@ class OpenQRApp(QMainWindow):
     def _on_url_scanned(self, url):
         log.info(f"Scanned URL: {url}")
         parsed = urlparse(url)
-        log.debug(f"Parsed URL: scheme={parsed.scheme}, netloc={parsed.netloc}, path={parsed.path}")
+        log.debug(
+            f"Parsed URL: scheme={parsed.scheme}, netloc={parsed.netloc}, path={parsed.path}"
+        )
         # Only validate URL
         if not validators.url(url):
             log.warning(f"Blocked by invalid URL: {url}")
-            QMessageBox.warning(self, "Invalid URL", f"The scanned data is not a valid URL:\n{url}")
+            QMessageBox.warning(
+                self, "Invalid URL", f"The scanned data is not a valid URL:\n{url}"
+            )
             return
         domain = parsed.netloc.lower()
         if any(domain == d.lower() for d in self.deny_domains):
             log.warning(f"Blocked by deny list: {domain}")
-            QMessageBox.warning(self, "Blocked Domain", f"This domain is on your Not Allow List (Blacklist):\n{domain}\nURL will not be opened.")
+            QMessageBox.warning(
+                self,
+                "Blocked Domain",
+                f"This domain is on your Not Allow List (Blacklist):\n{domain}\nURL will not be opened.",
+            )
             return
         self.add_to_history(url)
         self.set_status_bar("Last scanned URL", "#1976d2")
@@ -587,14 +654,17 @@ class OpenQRApp(QMainWindow):
         layout.addLayout(btn_row)
         dialog.setLayout(layout)
         result = None
+
         def accept():
             nonlocal result
             result = True
             dialog.accept()
+
         def reject():
             nonlocal result
             result = False
             dialog.reject()
+
         yes_btn.clicked.connect(accept)
         no_btn.clicked.connect(reject)
         dialog.exec()
@@ -616,7 +686,7 @@ class OpenQRApp(QMainWindow):
         except Exception:
             self.scan_history = []
         # Only refresh if history_list exists
-        if hasattr(self, 'history_list'):
+        if hasattr(self, "history_list"):
             self.refresh_history_list()
 
     def save_scan_history(self):
@@ -648,8 +718,12 @@ class OpenQRApp(QMainWindow):
         if selected_items:
             text = selected_items[0].text()
             # Extract URL after the first ' - '
-            url = text.split(' - ', 1)[-1]
-            clipboard = self.clipboard() if hasattr(self, 'clipboard') else QApplication.instance().clipboard()
+            url = text.split(" - ", 1)[-1]
+            clipboard = (
+                self.clipboard()
+                if hasattr(self, "clipboard")
+                else QApplication.instance().clipboard()
+            )
             clipboard.setText(url)
             log.info(f"Copied URL to clipboard: {url}")
             QMessageBox.information(self, "Copied", f"Copied to clipboard:\n{url}")
@@ -714,7 +788,7 @@ class OpenQRApp(QMainWindow):
         layout.addRow(QLabel("Prefix (e.g. qr_):"), prefix_input)
         # Suffix
         suffix_input = QLineEdit()
-        suffix_input.setText(self.scanner_suffix.encode('unicode_escape').decode())
+        suffix_input.setText(self.scanner_suffix.encode("unicode_escape").decode())
         layout.addRow(QLabel("Suffix (e.g. \\r, \\n, \\t):"), suffix_input)
         # OK/Cancel
         ok_btn = QPushButton("OK")
@@ -728,9 +802,15 @@ class OpenQRApp(QMainWindow):
         dialog.setLayout(layout)
         if dialog.exec():
             self.scanner_prefix = prefix_input.text()
-            self.scanner_suffix = bytes(suffix_input.text(), "utf-8").decode("unicode_escape")
-            self.qr_code_listener.set_prefix_suffix(self.scanner_prefix, self.scanner_suffix)
-            log.info(f"Scanner prefix set to: {self.scanner_prefix}, suffix set to: {repr(self.scanner_suffix)}")
+            self.scanner_suffix = bytes(suffix_input.text(), "utf-8").decode(
+                "unicode_escape"
+            )
+            self.qr_code_listener.set_prefix_suffix(
+                self.scanner_prefix, self.scanner_suffix
+            )
+            log.info(
+                f"Scanner prefix set to: {self.scanner_prefix}, suffix set to: {repr(self.scanner_suffix)}"
+            )
 
     def simulate_scanned_input(self, data):
         """For demonstration/testing: process a string as if it was scanned."""

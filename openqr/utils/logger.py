@@ -1,9 +1,11 @@
 import logging
 import os
+
 try:
     from appdirs import user_config_dir
 except ImportError:
     user_config_dir = None
+
 
 def setup_logger():
     logger = logging.getLogger("OpenQR")
@@ -17,7 +19,7 @@ def setup_logger():
     os.makedirs(config_dir, exist_ok=True)
     log_path = os.path.join(config_dir, "openqr.log")
 
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
     # File handler
     fh = logging.FileHandler(log_path)
@@ -30,7 +32,11 @@ def setup_logger():
     sh.setFormatter(formatter)
 
     # Avoid duplicate handlers
-    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == fh.baseFilename for h in logger.handlers):
+    if not any(
+        isinstance(h, logging.FileHandler)
+        and getattr(h, "baseFilename", None) == fh.baseFilename
+        for h in logger.handlers
+    ):
         logger.addHandler(fh)
     if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
         logger.addHandler(sh)
