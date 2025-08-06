@@ -99,7 +99,7 @@ jobs:
             libxcb-xinerama0
 
       - name: Run tests
-        run: make test
+        run: pytest -p no:qt
 
       - name: Build Linux executable
         run: make dist
