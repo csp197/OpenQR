@@ -70,18 +70,42 @@ format:
 test:
 	$(PYTEST) tests/
 
-# Build the app using PyInstaller
-.PHONY: build
-build:
+# Platform-specific build targets
+.PHONY: build build-windows build-macos
+
+build: build-windows build-macos
+
+# Windows build
+.PHONY: build-windows
+build-windows: icon version
+ifeq ($(OS),Windows_NT)
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
-		--icon=$(ICON) \
-		--add-data "$(ADD_DATA)"
+		--icon=assets/openqr_icon.ico \
+		--add-data "$(ADD_DATA)" \
+		--version-file version.txt
+else
+	@echo "Skipping Windows build: Not running on Windows."
+endif
+
+
+
+# macOS build
+.PHONY: build-macos
+build-macos: icon
+ifeq ($(shell uname),Darwin)
+	$(PYINSTALLER) OpenQR.spec
+else
+	@echo "Skipping macOS build: Not running on macOS."
+endif
+
 
 # Show build result
 .PHONY: dist
 dist: build
-	@echo "✅ Executable available at: ./dist/$(APP_NAME)"
+	@echo "✅ Windows Executable: ./dist/$(APP_NAME).exe"
+	@echo "✅ macOS Executable:   ./dist/$(APP_NAME)"
+
 
 # Clean all temp files and caches
 .PHONY: clean
@@ -100,3 +124,31 @@ freeze:
 # Clean and rebuild
 .PHONY: rebuild
 rebuild: clean build
+
+.PHONY: version
+version:
+	$(PYTHON) tools/generate_version_file.py
+
+# Icon conversion (PNG to ICNS for MacOS; PNG to ICO for Windows)
+.PHONY: icon
+icon:
+ifeq ($(shell uname),Darwin)
+	@echo "Creating macOS .icns icon from $(ICON)..."
+	@rm -rf assets/openqr_icon.iconset
+	@mkdir -p assets/openqr_icon.iconset
+	@# Generate all required icon sizes (must be PNG files)
+	@sips -z 16 16     $(ICON) --out assets/openqr_icon.iconset/icon_16x16.png
+	@sips -z 32 32     $(ICON) --out assets/openqr_icon.iconset/icon_16x16@2x.png
+	@sips -z 32 32     $(ICON) --out assets/openqr_icon.iconset/icon_32x32.png
+	@sips -z 64 64     $(ICON) --out assets/openqr_icon.iconset/icon_32x32@2x.png
+	@sips -z 128 128   $(ICON) --out assets/openqr_icon.iconset/icon_128x128.png
+	@sips -z 256 256   $(ICON) --out assets/openqr_icon.iconset/icon_128x128@2x.png
+	@sips -z 256 256   $(ICON) --out assets/openqr_icon.iconset/icon_256x256.png
+	@sips -z 512 512   $(ICON) --out assets/openqr_icon.iconset/icon_256x256@2x.png
+	@sips -z 512 512   $(ICON) --out assets/openqr_icon.iconset/icon_512x512.png
+	@sips -z 1024 1024 $(ICON) --out assets/openqr_icon.iconset/icon_512x512@2x.png
+	@iconutil -c icns assets/openqr_icon.iconset -o assets/openqr_icon.icns
+	@rm -rf assets/openqr_icon.iconset
+else
+	$(PYTHON) tools/convert_icon.py
+endif

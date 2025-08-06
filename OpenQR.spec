@@ -1,5 +1,7 @@
+# OpenQR.spec
 # -*- mode: python ; coding: utf-8 -*-
 
+block_cipher = None
 
 a = Analysis(
     ['main.py'],
@@ -8,38 +10,43 @@ a = Analysis(
     datas=[('assets/openqr_icon.png', 'assets')],
     hiddenimports=[],
     hookspath=[],
-    hooksconfig={},
     runtime_hooks=[],
     excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
     noarchive=False,
-    optimize=0,
 )
-pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+app = BUNDLE(
+    exe=EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name='OpenQR',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        console=False,
+        icon='assets/openqr_icon.icns',  # your macOS icon
+    ),
+    name='OpenQR.app',
+    icon='assets/openqr_icon.icns',
+    bundle_identifier='com.csp.openqr',
+    info_plist=open('assets/Info.plist.in').read(),
+)
+
+coll = COLLECT(
+    app,
     a.binaries,
+    a.zipfiles,
     a.datas,
-    [],
-    name='OpenQR',
-    debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=['assets/openqr_icon.png'],
-)
-app = BUNDLE(
-    exe,
-    name='OpenQR.app',
-    icon='assets/openqr_icon.png',
-    bundle_identifier=None,
+    name='OpenQR'
 )

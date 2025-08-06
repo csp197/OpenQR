@@ -9,6 +9,6 @@ def print_help():
 
 def print_version():
     version_text = """
-    OpenQR version 0.0.1
+    OpenQR version 1.0.0
     """
     print(version_text.strip())
