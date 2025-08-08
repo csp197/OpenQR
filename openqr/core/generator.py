@@ -18,9 +18,9 @@ from openqr.utils import logger
 log = logger.setup_logger()
 
 
-class QRCodeGenerator:
+class QRGenerator:
     """
-    A utility class for generating, caching, saving, and copying QR codes
+    This class is for generating, caching, saving, and copying QR codes
     for valid URLs. QR codes are generated using the `qrcode` library and
     stored as PNG images in a temporary cache directory.
     """
