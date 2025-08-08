@@ -4,6 +4,5 @@ venv
 .DS_Store
 build
 dist
-qt
 __pycache__
 *.log
