@@ -1,14 +1,16 @@
 from PyQt6.QtCore import QObject, QEvent
+from PyQt6.QtGui import QKeyEvent
 import keyboard  # pip install keyboard
 from openqr.utils import logger
 
 log = logger.setup_logger()
 
-class ScannerEventFilter(QObject):
+class KeyboardScannerEventFilter(QObject):
     def __init__(self, outer):
         super().__init__()
         self.outer = outer
         self._listening = False
+        log.info("Keyboard Scanner Event Filter intialized")
 
     def start_global_keyboard_hook(self):
         if not self._listening:
@@ -24,6 +26,8 @@ class ScannerEventFilter(QObject):
             self._listening = False
 
     def _on_key_event(self, event):
+        if not self.outer.is_listening or not self._listening:
+            return False
         # We only want key down events (not key up)
         if event.event_type == "down":
             key = event.name
@@ -43,22 +47,26 @@ class ScannerEventFilter(QObject):
                     # Ignore other special keys
                     return
 
-            suffix = self.outer.scanner_suffix
+            suffix = self.outer.suffix
             if suffix and self.outer._scanner_keystroke_buffer.endswith(suffix):
                 data = self.outer._scanner_keystroke_buffer
                 self.outer._scanner_keystroke_buffer = ""
                 log.info(f"Suffix detected, processing data: {data}")
-                self.outer.qr_code_listener.process_scanned_data(data)
+                self.outer.process_scanned_data(data)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, a0: QObject|None, a1: QEvent|None):
+        if not self.outer.is_listening or not self._listening:
+            return False
+        # watched = a0
+        event = a1 # <- to appease static type checking
         # Also keep GUI eventFilter if you want local keyboard capture
-        if event.type() == QEvent.Type.KeyPress:
+        if event is not None and event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
             key = event.text()
             if key:
                 self.outer._scanner_keystroke_buffer += key
-                suffix = self.outer.scanner_suffix
+                suffix = self.outer.suffix
                 if suffix and self.outer._scanner_keystroke_buffer.endswith(suffix):
                     data = self.outer._scanner_keystroke_buffer
                     self.outer._scanner_keystroke_buffer = ""
-                    self.outer.qr_code_listener.process_scanned_data(data)
+                    self.outer.process_scanned_data(data)
         return False  # Continue normal event processing

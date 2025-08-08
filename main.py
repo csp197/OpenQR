@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtWidgets import QApplication
-from openqr.app import OpenQRApp
+from openqr.qt.app import OpenQRApp
 from openqr.utils import printer
 
 if __name__ == "__main__":
