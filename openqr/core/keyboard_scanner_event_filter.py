@@ -1,72 +1,49 @@
-from PyQt6.QtCore import QObject, QEvent
-from PyQt6.QtGui import QKeyEvent
-import keyboard  # pip install keyboard
+from PyQt6.QtCore import QObject, QEvent, Qt
 from openqr.utils import logger
 
 log = logger.setup_logger()
 
+# from PyQt6.QtCore import QObject, QEvent, Qt
+
 class KeyboardScannerEventFilter(QObject):
-    def __init__(self, outer):
-        super().__init__()
-        self.outer = outer
-        self._listening = False
-        log.info("Keyboard Scanner Event Filter intialized")
+    """
+    Filters keyboard events on a specific Qt widget.
 
-    def start_global_keyboard_hook(self):
-        if not self._listening:
-            log.info("Starting global keyboard hook.")
-            # Hook keyboard globally, call self._on_key_event on each key press
-            keyboard.hook(self._on_key_event)
-            self._listening = True
+    This filter captures key presses, converts them to text, and passes
+    the data to the parent listener. It is designed to work without
+    global hooks, relying entirely on Qt's event system.
+    """
+    def __init__(self, listener):
+        super().__init__(listener)
+        self.listener = listener
 
-    def stop_global_keyboard_hook(self):
-        if self._listening:
-            log.info("Stopping global keyboard hook.")
-            keyboard.unhook_all()
-            self._listening = False
+    def eventFilter(self, a0: QObject|None, a1: QEvent|None) -> bool:
+        """
+        Intercepts and processes keyboard events.
+        """
 
-    def _on_key_event(self, event):
-        if not self.outer.is_listening or not self._listening:
-            return False
-        # We only want key down events (not key up)
-        if event.event_type == "down":
-            key = event.name
-            # Handle special keys that might be used as suffixes
-            # For regular character keys, just append them
-            if len(key) == 1:
-                self.outer._scanner_keystroke_buffer += key
+        watched_obj = a0
+        event = a1
+        if event is not None:
+            if (not self.listener.is_listening) or (event.type() != QEvent.Type.KeyPress):
+                # If not listening or not a key press, ignore the event
+                return super().eventFilter(watched_obj, event)
+
+            key_text = None
+            # Check for special keys that might be used as a suffix
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                key_text = "\r"
+            elif event.key() == Qt.Key.Key_Tab:
+                key_text = "\t"
             else:
-                # Map special keys like 'enter', 'tab', 'space' to characters if needed
-                if key == "enter":
-                    self.outer._scanner_keystroke_buffer += "\n"
-                elif key == "tab":
-                    self.outer._scanner_keystroke_buffer += "\t"
-                elif key == "space":
-                    self.outer._scanner_keystroke_buffer += " "
-                else:
-                    # Ignore other special keys
-                    return
+                # For all other keys, use the text they produce
+                key_text = event.text()
 
-            suffix = self.outer.suffix
-            if suffix and self.outer._scanner_keystroke_buffer.endswith(suffix):
-                data = self.outer._scanner_keystroke_buffer
-                self.outer._scanner_keystroke_buffer = ""
-                log.info(f"Suffix detected, processing data: {data}")
-                self.outer.process_scanned_data(data)
+            if key_text:
+                # Pass the captured character to the listener's thread-safe method
+                self.listener.feed_data(key_text)
+                # Return True to indicate the event was handled and should not be
+                # processed further by the watched widget.
+                return True
 
-    def eventFilter(self, a0: QObject|None, a1: QEvent|None):
-        if not self.outer.is_listening or not self._listening:
-            return False
-        # watched = a0
-        event = a1 # <- to appease static type checking
-        # Also keep GUI eventFilter if you want local keyboard capture
-        if event is not None and event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
-            key = event.text()
-            if key:
-                self.outer._scanner_keystroke_buffer += key
-                suffix = self.outer.suffix
-                if suffix and self.outer._scanner_keystroke_buffer.endswith(suffix):
-                    data = self.outer._scanner_keystroke_buffer
-                    self.outer._scanner_keystroke_buffer = ""
-                    self.outer.process_scanned_data(data)
-        return False  # Continue normal event processing
+        return super().eventFilter(watched_obj, event)
