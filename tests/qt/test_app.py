@@ -1,7 +1,5 @@
-import pytest
-from openqr.app import OpenQRApp
+from openqr.qt.app import OpenQRApp
 import tempfile
-import os
 
 
 class MinimalApp(OpenQRApp):
