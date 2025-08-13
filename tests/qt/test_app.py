@@ -8,7 +8,7 @@ class MinimalApp(OpenQRApp):
         self.allow_domains = []
         self.deny_domains = []
         self.scan_history = []
-        self.domains_file = tempfile.mktemp()
+        self.config_file = tempfile.mktemp()
         self.qr_code_listener = None
         self.pref_max_history = 10
         self.pref_auto_open_url = True
@@ -18,7 +18,7 @@ class MinimalApp(OpenQRApp):
         self.logo_image_path = None
         self.logo_image = None
 
-    def save_domain_lists(self):
+    def save_config(self):
         pass
 
     def load_domain_lists(self):

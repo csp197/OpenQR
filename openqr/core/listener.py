@@ -6,11 +6,13 @@ from openqr.utils import logger
 
 log = logger.setup_logger()
 
+
 class QRListener(QObject):
     """
     Listens for QR code scans via Qt keyboard events and ensures
     thread-safe buffer manipulation.
     """
+
     url_scanned = pyqtSignal(str)
 
     def __init__(self, timeout=1.0, prefix="", suffix="\r"):
@@ -30,6 +32,38 @@ class QRListener(QObject):
             f"QRListener initialized with prefix={repr(prefix)}, suffix={repr(suffix)}"
         )
 
+    def start_listening(self, target_widget: QWidget):
+        """
+        Starts listening for events on a specific target widget.
+        """
+        if not isinstance(target_widget, QWidget):
+            log.error(
+                "start_listening requires a valid QWidget to install the event filter on."
+            )
+            return
+
+        self._target_widget = target_widget
+        self.is_listening = True
+        self._install_event_filter()
+        log.info(
+            f"QRListener started listening on widget: {target_widget.objectName()}"
+        )
+
+    def stop_listening(self):
+        """
+        Stops listening and cleans up the event filter and buffer.
+        """
+        self.is_listening = False
+        self._remove_event_filter()
+
+        self._mutex.lock()
+        try:
+            self._scanner_keystroke_buffer = ""
+        finally:
+            self._mutex.unlock()
+
+        log.info("QRListener stopped listening.")
+
     def set_prefix_suffix(self, prefix, suffix):
         self.prefix = prefix
         self.suffix = suffix
@@ -48,7 +82,9 @@ class QRListener(QObject):
             log.debug(f"Buffer updated: {repr(self._scanner_keystroke_buffer)}")
 
             # Ensure buffer starts with prefix (if one is set)
-            if self.prefix and not self._scanner_keystroke_buffer.startswith(self.prefix):
+            if self.prefix and (
+                not self._scanner_keystroke_buffer.startswith(self.prefix)
+            ):
                 log.debug("Buffer does not match prefix. Clearing buffer.")
                 self._scanner_keystroke_buffer = ""
                 return
@@ -69,48 +105,21 @@ class QRListener(QObject):
         log.debug(f"Processing scanned data: {repr(data)}")
 
         # This check is technically redundant if called from feed_data but adds safety
-        if (self.prefix and not data.startswith(self.prefix)) or \
-           (self.suffix and not data.endswith(self.suffix)):
+        if (self.prefix and not data.startswith(self.prefix)) or (
+            self.suffix and not data.endswith(self.suffix)
+        ):
             log.debug("Prefix or suffix mismatch during processing.")
             return
 
         # Strip prefix and suffix to get the payload
         url = data
         if self.prefix:
-            url = url[len(self.prefix):]
+            url = url[len(self.prefix) :]
         if self.suffix:
-            url = url[:-len(self.suffix)]
+            url = url[: -len(self.suffix)]
 
         log.info(f"Prefix and suffix stripped. Emitting scanned URL: {url}")
         self.emit_url_scanned(url)
-
-    def start_listening(self, target_widget: QWidget):
-        """
-        Starts listening for events on a specific target widget.
-        """
-        if not isinstance(target_widget, QWidget):
-            log.error("start_listening requires a valid QWidget to install the event filter on.")
-            return
-
-        self._target_widget = target_widget
-        self.is_listening = True
-        self._install_event_filter()
-        log.info(f"QRListener started listening on widget: {target_widget.objectName()}")
-
-    def stop_listening(self):
-        """
-        Stops listening and cleans up the event filter and buffer.
-        """
-        self.is_listening = False
-        self._remove_event_filter()
-
-        self._mutex.lock()
-        try:
-            self._scanner_keystroke_buffer = ""
-        finally:
-            self._mutex.unlock()
-
-        log.info("QRListener stopped listening.")
 
     def emit_url_scanned(self, url: str):
         log.info(f"Emitting url_scanned signal with URL: {url}")

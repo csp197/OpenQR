@@ -1,11 +1,11 @@
 import pytest
 from pytestqt.exceptions import TimeoutError
-from openqr.scanner.listener import QRCodeListener
+from openqr.core.listener import QRListener
 
 
 @pytest.fixture
 def listener():
-    return QRCodeListener(prefix="qr_", suffix="\n")
+    return QRListener(prefix="qr_", suffix="\n")
 
 
 def test_prefix_suffix_extraction(listener, qtbot):

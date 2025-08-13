@@ -7,6 +7,7 @@ from openqr.utils import logger
 
 log = logger.setup_logger()
 
+
 class QRScanner(QObject):
     img_scanned = pyqtSignal(
         object
@@ -27,7 +28,9 @@ class QRScanner(QObject):
 
         try:
             image = Image.open(image_path)
-            log.info(f"QR Code Image loaded with format: {image.format}, size: {image.size} from path: {image_path}")
+            log.info(
+                f"QR Code Image loaded with format: {image.format}, size: {image.size} from path: {image_path}"
+            )
             if emit_signals:
                 self.emit_image_scanned(image)
         except Exception as e:
@@ -43,7 +46,9 @@ class QRScanner(QObject):
         except Exception as e:
             log.error(f"Loaded QR Code Image failed to decode: {e}")
         if not decoded_objects:
-            log.error(f"QR Code Image at {image_path} does not contain any recognizable QR code or barcode")
+            log.error(
+                f"QR Code Image at {image_path} does not contain any recognizable QR code or barcode"
+            )
             return None
 
         decoded_texts = [obj.data.encode("utf-8") for obj in decoded_objects]
@@ -57,5 +62,7 @@ class QRScanner(QObject):
         self.img_scanned.emit(img)
 
     def emit_image_decoded(self, emit_value):
-        log.info(f"Emitting img_decoded signal with the first decoded value in the object array: {emit_value}")
+        log.info(
+            f"Emitting img_decoded signal with the first decoded value in the object array: {emit_value}"
+        )
         self.img_decoded.emit(emit_value)
