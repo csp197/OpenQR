@@ -27,7 +27,8 @@ class KeyboardScannerEventFilter(QObject):
         watched_obj = a0
         event = a1
         if event is not None:
-            if (not self.listener.is_listening) or (
+            is_listening = self.listener.is_listening
+            if (not is_listening) or (
                 event.type() != QEvent.Type.KeyPress
             ):
                 # If not listening or not a key press, ignore the event
