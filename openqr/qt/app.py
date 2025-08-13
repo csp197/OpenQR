@@ -468,7 +468,7 @@ class OpenQRApp(QMainWindow):
     def start_listening(self):
         if not self.qr_code_listener.is_listening:
             log.info("Start listening pressed.")
-            self.qr_code_listener.start_listening(self)
+            self.qr_code_listener.start_listening()
             self.set_status_bar("Listening for QR codes...", "#388e3c")
             self.update_listen_buttons()
             self.update_status_indicator()
