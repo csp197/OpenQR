@@ -1,3 +1,4 @@
+import io
 import os
 import json
 from urllib.parse import urlparse
@@ -539,7 +540,11 @@ class OpenQRApp(QMainWindow):
         qr_rgba = self.qr_image.convert("RGBA")
         w, h = qr_rgba.size
         data = qr_rgba.tobytes("raw", "RGBA")
-        qimage = QImage(data, w, h, QImage.Format.Format_RGBA8888)
+        # Convert RGBA bytes to QPixmap
+        buf = io.BytesIO()
+        self.qr_image.save(buf, format="PNG")
+        qimage = QImage()
+        qimage.loadFromData(buf.getvalue(), "PNG")  # Qt now owns the pixels
         pixmap = QPixmap.fromImage(qimage)
         scaled_pixmap = pixmap.scaled(
             self.qr_label.size(),
@@ -552,11 +557,13 @@ class OpenQRApp(QMainWindow):
         self.status_bar.showMessage("QR code generated.")
         log.info("QR code generated and displayed.")
 
-    def pil_image_to_qpixmap(self, pil_image):
-        rgb_image = pil_image.convert("RGB")
-        w, h = rgb_image.size
-        data = rgb_image.tobytes("raw", "RGB")
-        qimage = QImage(data, w, h, QImage.Format.Format_RGB888)
+    def pil_image_to_qpixmap(self, image: Image.Image) -> QPixmap:
+        """Converts a PIL Image to a QPixmap."""
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        qimage = QImage()
+        qimage.loadFromData(buffer.read(), "PNG")
         return QPixmap.fromImage(qimage)
 
     def save_qr_code(self):
