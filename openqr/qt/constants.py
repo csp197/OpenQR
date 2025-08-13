@@ -1,16 +1,8 @@
 # constants
-START_LISTENING_MSG = "Start listening"
-STOP_LISTENING_MSG = "Stop listening"
-ACTIVE_LISTENER_MSG = (
-    "This program is currently listening to your keyboard for a QR Code."
-)
-INACTIVE_LISTENER_MSG = (
-    "NOTE: This program is not currently listening to your keyboard for a QR Code."
-)
 HELP_MESSAGE = """
-<b>🆘 OpenQR Help</b><br><br>
+<b>🔍 OpenQR Help</b><br><br>
 
-<b>🎧 Listening Mode:</b><br>
+<b>👂 Listening Mode:</b><br>
 Click the <i>'Start Listening'</i> button to begin capturing QR scans from your hardware scanner.
 Make sure your scanner is configured as an HID (keyboard emulation) device. When listening, scanned URLs
 will be automatically processed and displayed.<br><br>
@@ -22,10 +14,6 @@ Use Scanner Settings to define a prefix and/or suffix to trim from incoming scan
 <b>🌐 Domain Management:</b><br>
 Whitelist or blacklist domains based on your preferences. You can control which scanned URLs are considered valid,
 and even block unwanted domains for safety. Accessible under <i>Settings > Domain Management</i>.<br><br>
-
-<b>🔐 URL Safety Settings:</b><br>
-Define which URL protocols are considered safe (e.g., <code>https</code>, <code>mailto</code>).
-This helps filter out suspicious or insecure links during scanning.<br><br>
 
 <b>🖼️ Upload Logo:</b><br>
 Add a personal or brand logo to your generated QR codes. This can be done from the QR generator section.

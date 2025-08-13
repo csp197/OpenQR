@@ -1,10 +1,10 @@
-from openqr.generator.generator import QRCodeGenerator
+from openqr.core.generator import QRGenerator
 import pytest
 
 
 @pytest.fixture
 def generator():
-    return QRCodeGenerator()
+    return QRGenerator()
 
 
 @pytest.mark.parametrize(

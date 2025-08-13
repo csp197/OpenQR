@@ -1,10 +1,9 @@
 import os
-import validators
 import json
 from urllib.parse import urlparse
 import datetime
 import webbrowser
-
+from PIL import Image
 from PyQt6.QtWidgets import (
     QMainWindow,
     QPushButton,
@@ -31,19 +30,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QImage, QIcon
 from PyQt6.QtCore import Qt
 
-from openqr.generator.generator import QRCodeGenerator
-from openqr.scanner.listener import QRCodeListener
-from openqr.constants import HELP_MESSAGE
-from openqr.scanner.scanner_event_filter import ScannerEventFilter
+from openqr.core.generator import QRGenerator
+from openqr.core.listener import QRListener
+from openqr.qt.constants import HELP_MESSAGE
 from openqr.utils import logger
-
-from PIL import Image
-
-
-# try:
-#     from appdirs import user_config_dir
-# except ImportError:
-#     user_config_dir = None
 
 log = logger.setup_logger()
 
@@ -52,80 +42,87 @@ class OpenQRApp(QMainWindow):
     def __init__(self):
         super().__init__()
         log.info("OpenQRApp initializing...")
+
         # Scanner settings
         self.scanner_prefix = ""
         self.scanner_suffix = "\r"
-        self.qr_code_listener = QRCodeListener(
+        self.qr_code_listener = QRListener(
             timeout=1.0, prefix=self.scanner_prefix, suffix=self.scanner_suffix
         )
-        self.qr_code_generator = QRCodeGenerator()
+        self.qr_code_generator = QRGenerator()
         self.qr_image = None
+
         # Preferences
         self.pref_auto_open_url = True
         self.pref_notification_type = "Popup"
         self.pref_max_history = 20
         self.allow_domains = []
         self.deny_domains = []
-        # self.safe_protocols = ["http", "https"]
         self.logo_image_path = None
         self.logo_image = None
-        self.domains_file = self.get_domains_file_path()
-        self.load_domain_lists()
-        log.info("Loaded domain lists and settings.")
+        self.config_file = self.get_config_file_path()
+
+        self.load_config()
+        log.info("Loaded config.")
+
         self._init_ui()
         log.info("UI initialized.")
-        self.load_scan_history()  # <-- moved here, after UI is set up
+
+        self.load_scan_history()
         log.info("Scan history loaded.")
+
         self.qr_code_listener.url_scanned.connect(self._on_url_scanned)
         log.info("Signal connections established.")
-        self._scanner_keystroke_buffer = ""
-        self._scanner_event_filter = None
+
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFocus()
+        log.info("Set focus policy for keystroke listening.")
 
-    def get_domains_file_path(self):
-        # if user_config_dir:
-        #     config_dir = user_config_dir("openqr", "openqr")
-        # else:
+    def get_config_file_path(self):
         config_dir = os.path.expanduser("~/.openqr")
         os.makedirs(config_dir, exist_ok=True)
         log.debug(f"Config file path: {config_dir}")
-        return os.path.join(config_dir, "openqr_domains.json")
+        return os.path.join(config_dir, "openqr_config.json")
 
-    def load_domain_lists(self):
+    def load_config(self):
         try:
-            with open(self.domains_file, "r") as f:
+            with open(self.config_file, "r") as f:
                 data = json.load(f)
+                self.scanner_prefix = data.get("prefix", "")
+                self.scanner_suffix = data.get("suffix", "\r")
                 self.allow_domains = data.get("allow", [])
                 self.deny_domains = data.get("deny", [])
-                # self.safe_protocols = data.get("safe_protocols", ["http", "https"])
                 self.logo_image_path = data.get("logo_image_path", None)
                 if self.logo_image_path and os.path.exists(self.logo_image_path):
                     self.logo_image = Image.open(self.logo_image_path)
                 else:
                     self.logo_image = None
-            log.info("Domain lists loaded from file.")
+            log.info("Config loaded from file.")
         except Exception as e:
-            log.warning(f"Failed to load domain lists: {e}")
+            log.error(f"Failed to load config: {e}")
+            # Reset config
+            self.scanner_prefix = ""
+            self.scanner_suffix = "\r"
             self.allow_domains = []
             self.deny_domains = []
-            # self.safe_protocols = ["http", "https"]
             self.logo_image_path = None
             self.logo_image = None
 
-    def save_domain_lists(self):
+    def save_config(self):
         data = {
+            "prefix": self.scanner_prefix,
+            "suffix": self.scanner_suffix,
             "allow": self.allow_domains,
             "deny": self.deny_domains,
             "logo_image_path": self.logo_image_path,
             "scan_history": self.scan_history,
         }
         try:
-            with open(self.domains_file, "w") as f:
+            with open(self.config_file, "w") as f:
                 json.dump(data, f, indent=2)
-            log.info("Domain lists and settings saved.")
+            log.info("Config saved.")
         except Exception as e:
-            log.error(f"Failed to save domain lists: {e}")
+            log.error(f"Failed to save config: {e}")
 
     def upload_logo_image(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -134,15 +131,17 @@ class OpenQRApp(QMainWindow):
         if file_path:
             self.logo_image_path = file_path
             self.logo_image = Image.open(file_path)
-            self.save_domain_lists()
+            self.save_config()
             log.info(f"Logo image uploaded: {file_path}")
+            log.info("Regenerating QR Code.")
             self.generate_qr_code()  # Update preview
 
     def remove_logo_image(self):
         log.info("Logo image removed.")
         self.logo_image_path = None
         self.logo_image = None
-        self.save_domain_lists()
+        self.save_config()
+        log.info("Regenerating QR Code.")
         self.generate_qr_code()  # Update preview
 
     def open_domain_settings_dialog(self):
@@ -150,6 +149,7 @@ class OpenQRApp(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle("Domain Management")
         layout = QHBoxLayout(dialog)
+
         # Allow list
         allow_layout = QVBoxLayout()
         allow_label = QLabel("Allow List (Whitelist)")
@@ -161,6 +161,7 @@ class OpenQRApp(QMainWindow):
         allow_layout.addWidget(allow_list)
         allow_layout.addWidget(add_allow_btn)
         allow_layout.addWidget(remove_allow_btn)
+
         # Deny list
         deny_layout = QVBoxLayout()
         deny_label = QLabel("Not Allow List (Blacklist)")
@@ -172,9 +173,11 @@ class OpenQRApp(QMainWindow):
         deny_layout.addWidget(deny_list)
         deny_layout.addWidget(add_deny_btn)
         deny_layout.addWidget(remove_deny_btn)
+
         # Add to main layout
         layout.addLayout(allow_layout)
         layout.addLayout(deny_layout)
+
         # OK/Cancel
         btn_row = QHBoxLayout()
         ok_btn = QPushButton("OK")
@@ -207,36 +210,42 @@ class OpenQRApp(QMainWindow):
             self.deny_domains = [
                 deny_list.item(i).text() for i in range(deny_list.count())
             ]
-            self.save_domain_lists()
+            self.save_config()
             log.info("Domain lists updated via dialog.")
 
     def open_preferences_dialog(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("App Preferences")
         layout = QFormLayout(dialog)
+
         # Auto-open URLs
         auto_open_checkbox = QCheckBox("Automatically open scanned URLs")
         auto_open_checkbox.setChecked(self.pref_auto_open_url)
         layout.addRow(auto_open_checkbox)
+
         # Notification type
         notif_combo = QComboBox()
         notif_combo.addItems(["Popup", "Status Bar Only"])
         notif_combo.setCurrentText(self.pref_notification_type)
         layout.addRow(QLabel("Notification Type:"), notif_combo)
+
         # Max history
         max_history_spin = QSpinBox()
         max_history_spin.setMinimum(1)
         max_history_spin.setMaximum(100)
         max_history_spin.setValue(self.pref_max_history)
         layout.addRow(QLabel("Max History Items:"), max_history_spin)
+
         # Prefix
         prefix_input = QLineEdit()
         prefix_input.setText(self.scanner_prefix)
         layout.addRow(QLabel("Prefix (e.g. qr_):"), prefix_input)
+
         # Suffix
         suffix_input = QLineEdit()
         suffix_input.setText(self.scanner_suffix.encode("unicode_escape").decode())
         layout.addRow(QLabel("Suffix (e.g. \\r, \\n, \\t):"), suffix_input)
+
         # OK/Cancel
         ok_btn = QPushButton("OK")
         cancel_btn = QPushButton("Cancel")
@@ -258,6 +267,7 @@ class OpenQRApp(QMainWindow):
             self.qr_code_listener.set_prefix_suffix(
                 self.scanner_prefix, self.scanner_suffix
             )
+            self.save_config()
             self.trim_history()
             log.info("Preferences updated via App Preferences dialog.")
 
@@ -265,10 +275,11 @@ class OpenQRApp(QMainWindow):
         log.debug("Initializing UI components...")
         self.setWindowTitle("OpenQR - QR Code Scanner & Generator")
         self.setMinimumSize(900, 600)
+
         icon_path = os.path.join(os.path.dirname(__file__), "../assets/openqr_icon.png")
         self.setWindowIcon(QIcon(icon_path))
-
         main_widget = QWidget()
+
         # Outer vertical layout for the whole window
         outer_layout = QVBoxLayout()
         main_widget.setLayout(outer_layout)
@@ -283,6 +294,7 @@ class OpenQRApp(QMainWindow):
         # Sidebar: Scanner controls, status, scan history, help
         sidebar_group = QGroupBox("Scanner Controls")
         sidebar_layout = QVBoxLayout()
+
         # Start/Stop Listening buttons (side by side)
         listen_btn_row = QHBoxLayout()
         self.start_btn = QPushButton("Start Listening")
@@ -296,6 +308,7 @@ class OpenQRApp(QMainWindow):
         listen_btn_row.addWidget(self.start_btn)
         listen_btn_row.addWidget(self.stop_btn)
         sidebar_layout.addLayout(listen_btn_row)
+
         # Status indicator
         self.status_indicator = QLabel()
         self.status_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -303,6 +316,7 @@ class OpenQRApp(QMainWindow):
             "font-size: 24px; font-weight: bold; padding: 10px;"
         )
         sidebar_layout.addWidget(self.status_indicator)
+
         # Prefix/suffix/URL feedback
         self.prefix_feedback = QLabel()
         self.prefix_feedback.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -310,6 +324,7 @@ class OpenQRApp(QMainWindow):
             "font-size: 16px; color: #1976d2; padding: 5px;"
         )
         sidebar_layout.addWidget(self.prefix_feedback)
+
         # Scan history
         history_label = QLabel("Scan History:")
         sidebar_layout.addWidget(history_label)
@@ -321,6 +336,7 @@ class OpenQRApp(QMainWindow):
         self.clear_history_button = QPushButton("Clear History")
         self.clear_history_button.clicked.connect(self.clear_history)
         sidebar_layout.addWidget(self.clear_history_button)
+
         # Help button
         help_btn = QPushButton("Help")
         help_btn.clicked.connect(self.show_help_dialog)
@@ -357,8 +373,8 @@ class OpenQRApp(QMainWindow):
         color_btn_row = QHBoxLayout()
         self.fg_color_button = QPushButton("Set QR Foreground Color")
         self.bg_color_button = QPushButton("Set QR Background Color")
-        self.fg_color_button.clicked.connect(self.set_fg_color)
-        self.bg_color_button.clicked.connect(self.set_bg_color)
+        self.fg_color_button.clicked.connect(lambda: self._set_color("fg"))
+        self.bg_color_button.clicked.connect(lambda: self._set_color("bg"))
         color_btn_row.addWidget(self.fg_color_button)
         color_btn_row.addWidget(self.bg_color_button)
         generator_layout.addLayout(color_btn_row)
@@ -451,9 +467,8 @@ class OpenQRApp(QMainWindow):
     def start_listening(self):
         if not self.qr_code_listener.is_listening:
             log.info("Start listening pressed.")
-            self.qr_code_listener.start_listening()
+            self.qr_code_listener.start_listening(self)
             self.set_status_bar("Listening for QR codes...", "#388e3c")
-            self.install_scanner_event_filter()
             self.update_listen_buttons()
             self.update_status_indicator()
 
@@ -461,8 +476,7 @@ class OpenQRApp(QMainWindow):
         if self.qr_code_listener.is_listening:
             log.info("Stop listening pressed.")
             self.qr_code_listener.stop_listening()
-            self.set_status_bar("Ready", "")  # #b71c1c
-            self.remove_scanner_event_filter()
+            self.set_status_bar("Ready", "")  # old value => #b71c1c
             self.update_listen_buttons()
             self.update_status_indicator()
 
@@ -474,46 +488,9 @@ class OpenQRApp(QMainWindow):
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
 
-    def install_scanner_event_filter(self):
-        if not self._scanner_event_filter and self.qr_code_listener.is_listening:
-            self._scanner_event_filter = ScannerEventFilter(self)
-            self.installEventFilter(self._scanner_event_filter)
-            self._scanner_event_filter.start_global_keyboard_hook()
-            log.info("Scanner event filter installed.")
-
-    def remove_scanner_event_filter(self):
-        if self._scanner_event_filter:
-            self.removeEventFilter(self._scanner_event_filter)
-            self._scanner_event_filter.stop_global_keyboard_hook()
-            self._scanner_event_filter = None
-            self._scanner_keystroke_buffer = ""
-            log.info("Scanner event filter removed and global hook stopped.")
-
-    def process_scanned_data(self, data):
-        # Here you strip prefix/suffix and do what you want with scanned data
-        prefix = self.scanner_prefix
-        suffix = self.scanner_suffix
-        log.info(f"Processing scanned data: {repr(data)}")
-        if prefix and not data.startswith(prefix):
-            log.info("Prefix not detected, ignoring data")
-            return
-        if suffix and not data.endswith(suffix):
-            log.info("Suffix not detected, ignoring data")
-            return
-
-        # Strip prefix and suffix
-        content = data
-        if prefix:
-            content = content[len(prefix) :]
-        if suffix:
-            content = content[: -len(suffix)]
-
-        log.info(f"Scanned content: {repr(content)}")
-        log.info(f"Final scanned content: {content}")
-
     def validate_url(self):
         url = self.url_input.text().strip()
-        if validators.url(url):
+        if self.qr_code_generator.validate_url(url):
             self.validation_label.setText("\u2713 Valid URL")
             self.validation_label.setStyleSheet("color: green; font-weight: bold;")
             self.generate_button.setEnabled(True)
@@ -525,7 +502,7 @@ class OpenQRApp(QMainWindow):
     def generate_qr_code(self):
         url = self.url_input.text().strip()
         log.info(f"Generating QR code for URL: {url}")
-        if not validators.url(url):
+        if not self.qr_code_generator.validate_url(url):
             log.warning(f"Invalid URL entered: {url}")
             QMessageBox.warning(self, "Invalid URL", "Please enter a valid URL.")
             return
@@ -598,37 +575,46 @@ class OpenQRApp(QMainWindow):
             self.qr_code_generator.copy_qr_code_to_clipboard(self.qr_image)
             QMessageBox.information(self, "Copied", "QR Code copied to clipboard.")
 
-    def set_fg_color(self):
+    def _set_color(self, target):
         color = QColorDialog.getColor()
         if color.isValid():
-            self.qr_fg_color = color.name()
+            if target == "fg":
+                self.qr_fg_color = color.name()
+            elif target == "bg":
+                self.qr_bg_color = color.name()
             url = self.url_input.text().strip()
-            if url and validators.url(url):
-                self.generate_qr_code()
-
-    def set_bg_color(self):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.qr_bg_color = color.name()
-            url = self.url_input.text().strip()
-            if url and validators.url(url):
+            if url and self.qr_code_generator.validate_url(url):
                 self.generate_qr_code()
 
     def _on_url_scanned(self, url):
+        """
+        Called when a URL is scanned by the QR code listener.
+
+        Args:
+            url (str): The scanned URL.
+
+        The method will:
+            - Validate the URL
+            - Check if the URL's domain is in the deny list
+            - If the URL is valid and not blocked by the deny list,
+                show a dialog asking to open the URL in the default web browser.
+            - If the dialog is accepted, add the URL's domain to the allow list and open the URL.
+            - If the dialog is rejected, simply add the URL to the history.
+        """
         log.info(f"Scanned URL: {url}")
         parsed = urlparse(url)
         log.debug(
             f"Parsed URL: scheme={parsed.scheme}, netloc={parsed.netloc}, path={parsed.path}"
         )
         # Only validate URL
-        if not validators.url(url):
+        if not self.qr_code_generator.validate_url(url):
             log.warning(f"Blocked by invalid URL: {url}")
             QMessageBox.warning(
                 self, "Invalid URL", f"The scanned data is not a valid URL:\n{url}"
             )
             return
         domain = parsed.netloc.lower()
-        if any(domain == d.lower() for d in self.deny_domains):
+        if domain in self.deny_domains:
             log.warning(f"Blocked by deny list: {domain}")
             QMessageBox.warning(
                 self,
@@ -636,52 +622,60 @@ class OpenQRApp(QMainWindow):
                 f"This domain is on your Not Allow List (Blacklist):\n{domain}\nURL will not be opened.",
             )
             return
-        self.add_to_history(url)
-        self.set_status_bar("Last scanned URL", "#1976d2")
-        self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
-        # Always show dialog, with option to skip in future
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Open URL?")
-        layout = QVBoxLayout(dialog)
-        label = QLabel(f"Do you want to open this link?\n\n{url}")
-        layout.addWidget(label)
-        skip_checkbox = QCheckBox(f"Don't ask again for this domain ({domain})")
-        layout.addWidget(skip_checkbox)
-        btn_row = QHBoxLayout()
-        yes_btn = QPushButton("Yes")
-        no_btn = QPushButton("No")
-        btn_row.addWidget(yes_btn)
-        btn_row.addWidget(no_btn)
-        layout.addLayout(btn_row)
-        dialog.setLayout(layout)
-        result = None
-
-        def accept():
-            nonlocal result
-            result = True
-            dialog.accept()
-
-        def reject():
-            nonlocal result
-            result = False
-            dialog.reject()
-
-        yes_btn.clicked.connect(accept)
-        no_btn.clicked.connect(reject)
-        dialog.exec()
-        if result:
-            if skip_checkbox.isChecked():
-                if domain not in self.allow_domains:
-                    self.allow_domains.append(domain)
-                    self.save_domain_lists()
-                    log.info(f"Domain added to allow list: {domain}")
-
-            log.info(f"Opening URL in browser: {url}")
+        if domain in self.allow_domains:
+            log.info(f"Domain on allow list, not asking again: {domain}")
+            self.add_to_history(url)
+            self.set_status_bar("Last scanned URL", "#1976d2")
+            self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
+            log.info(f"Opening URL in default web browser: {url}")
             webbrowser.open(url)
+        else:
+            self.add_to_history(url)
+            self.set_status_bar("Last scanned URL", "#1976d2")
+            self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Open URL?")
+            layout = QVBoxLayout(dialog)
+            label = QLabel(f"Do you want to open this link?\n\n{url}")
+            layout.addWidget(label)
+            skip_checkbox = QCheckBox(f"Don't ask again for this domain ({domain})")
+            layout.addWidget(skip_checkbox)
+            btn_row = QHBoxLayout()
+            yes_btn = QPushButton("Yes")
+            no_btn = QPushButton("No")
+            btn_row.addWidget(yes_btn)
+            btn_row.addWidget(no_btn)
+            layout.addLayout(btn_row)
+            dialog.setLayout(layout)
+            result = None
+
+            def accept():
+                nonlocal result
+                result = True
+                dialog.accept()
+
+            def reject():
+                nonlocal result
+                result = False
+                dialog.reject()
+
+            yes_btn.clicked.connect(accept)
+            no_btn.clicked.connect(reject)
+            dialog.exec()
+            if result:
+                if skip_checkbox.isChecked():
+                    log.info(f"Domain will not be asked again: {domain}")
+                    if domain not in self.allow_domains:
+                        self.allow_domains.append(domain)
+                        self.save_config()
+                        log.info(f"Domain added to allow list: {domain}")
+
+                log.info(f"Opening URL in default web browser: {url}")
+                webbrowser.open(url)
 
     def load_scan_history(self):
         try:
-            with open(self.domains_file, "r") as f:
+            with open(self.config_file, "r") as f:
                 data = json.load(f)
                 self.scan_history = data.get("scan_history", [])
         except Exception:
@@ -692,12 +686,12 @@ class OpenQRApp(QMainWindow):
 
     def save_scan_history(self):
         try:
-            with open(self.domains_file, "r") as f:
+            with open(self.config_file, "r") as f:
                 data = json.load(f)
         except Exception:
             data = {}
         data["scan_history"] = self.scan_history
-        with open(self.domains_file, "w") as f:
+        with open(self.config_file, "w") as f:
             json.dump(data, f, indent=2)
 
     def refresh_history_list(self):
@@ -715,6 +709,7 @@ class OpenQRApp(QMainWindow):
         log.info(f"Added to scan history: {url} at {ts}")
 
     def copy_selected_url(self):
+        """TODO: refactor"""
         selected_items = self.history_list.selectedItems()
         if selected_items:
             text = selected_items[0].text()
@@ -812,10 +807,7 @@ class OpenQRApp(QMainWindow):
             log.info(
                 f"Scanner prefix set to: {self.scanner_prefix}, suffix set to: {repr(self.scanner_suffix)}"
             )
-
-    def simulate_scanned_input(self, data):
-        """For demonstration/testing: process a string as if it was scanned."""
-        self.qr_code_listener.process_scanned_data(data)
+            self.save_config()
 
     def set_status_bar(self, message, color):
         self.status_bar.setStyleSheet(f"background-color: {color}; color: white;")
