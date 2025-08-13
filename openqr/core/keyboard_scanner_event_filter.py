@@ -3,6 +3,7 @@ from openqr.utils import logger
 
 log = logger.setup_logger()
 
+
 class KeyboardScannerEventFilter(QObject):
     """
     Cross-platform keyboard event filter for barcode/QR scanners.

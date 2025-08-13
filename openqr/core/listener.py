@@ -1,5 +1,6 @@
 from PyQt6.QtCore import QObject, pyqtSignal, QMutex
 from PyQt6.QtWidgets import QApplication
+
 from openqr.core.keyboard_scanner_event_filter import KeyboardScannerEventFilter
 from openqr.utils import logger
 
@@ -70,6 +71,7 @@ class QRListener(QObject):
         if chunk in ("\r\n", "\n"):
             chunk = "\r"
 
+
         self._mutex.lock()
         try:
             self._scanner_keystroke_buffer += chunk
@@ -112,6 +114,7 @@ class QRListener(QObject):
         if self.suffix:
             url = url[:-len(self.suffix)]
 
+
         log.info(f"Prefix and suffix stripped. Emitting scanned URL: {url}")
         self.emit_url_scanned(url)
 
@@ -120,6 +123,7 @@ class QRListener(QObject):
         self.url_scanned.emit(url)
 
     def _install_event_filter(self):
+
         if not self._event_filter:
             self._event_filter = KeyboardScannerEventFilter(self)
             app = QApplication.instance()
@@ -130,5 +134,6 @@ class QRListener(QObject):
         if self._event_filter:
             app = QApplication.instance()
             app.removeEventFilter(self._event_filter)
+
             self._event_filter = None
             log.info("Scanner event filter removed.")
