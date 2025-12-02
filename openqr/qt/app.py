@@ -604,45 +604,48 @@ class OpenQRApp(QMainWindow):
         log.info(f"Scanned URL: {url}")
         parsed = urlparse(url)
 
-        # Determine if the listener should stop after this scan attempt
         should_stop = self.stop_after_checkbox.isChecked()
 
-        # 1. Invalid URL Check and Fix
         if not self.qr_code_generator.validate_url(url):
             QMessageBox.warning(
                 self, "Invalid URL", f"The scanned data is not a valid URL:\n{url}"
             )
-            # Explicitly stop listening and update UI if 'stop after scan' is enabled.
             if should_stop:
                 self.stop_listening()
-            return  # Exit the function for invalid URLs
+            return
 
         domain = parsed.netloc.lower()
-
-        # 2. Denied Domain Check and Fix
         if domain in self.deny_domains:
             QMessageBox.warning(
                 self,
                 "Blocked Domain",
                 f"This domain is on your Not Allow List (Blacklist):\n{domain}\nURL will not be opened.",
             )
-            # Explicitly stop listening and update UI if 'stop after scan' is enabled.
             if should_stop:
                 self.stop_listening()
-            return  # Exit the function for blocked domains
+            return
 
         # Add to history and update UI
         self.add_to_history(url)
         self.set_status_bar(f"Last scanned: {url}", "#1976d2")
-        # self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
 
-        # If domain allowed, open immediately
+        should_open = False
+
+        # Path 1: Domain is pre-allowed, open immediately
         if domain in self.allow_domains:
-            webbrowser.open(url)
+            should_open = True
+
+        # Path 2: Domain is NOT pre-allowed, ask user via dialog
+        elif self.pref_auto_open_url:
+            # If auto-open is enabled, skip the confirmation dialog and open.
+            should_open = True
+
         else:
-            # Ask user logic (remains the same)
+            # Show Dialog to ask user for confirmation
             dialog = QDialog(self)
             dialog.setWindowTitle("Open URL?")
+            # ... (rest of the dialog setup is the same) ...
+
             layout = QVBoxLayout(dialog)
             label = QLabel(f"Do you want to open this link?\n\n{url}")
             layout.addWidget(label)
@@ -656,92 +659,34 @@ class OpenQRApp(QMainWindow):
             layout.addLayout(btn_row)
             dialog.setLayout(layout)
 
-            result = None
+            user_result = None
 
             def accept():
-                nonlocal result
-                result = True
+                nonlocal user_result
+                user_result = True
                 dialog.accept()
 
             def reject():
-                nonlocal result
-                result = False
+                nonlocal user_result
+                user_result = False
                 dialog.reject()
 
             yes_btn.clicked.connect(accept)
             no_btn.clicked.connect(reject)
             dialog.exec()
-            if result:
+
+            if user_result:
+                # User clicked Yes
+                should_open = True
                 if skip_checkbox.isChecked() and (domain not in self.allow_domains):
                     self.allow_domains.append(domain)
                     self.save_config()
-                webbrowser.open(url)
 
-        # After handling the scanned URL, the listener may auto-stop
-        # (this happens internally in QRListener after a successful emission).
-        # Schedule a UI refresh shortly after to reflect the listener state (Not Listening).
-        # This singleShot is still needed for the success path if the listener stops itself.
-        QTimer.singleShot(
-            50, lambda: (self.update_listen_buttons(), self.update_status_indicator())
-        )
-
-        domain = parsed.netloc.lower()
-        if domain in self.deny_domains:
-            QMessageBox.warning(
-                self,
-                "Blocked Domain",
-                f"This domain is on your Not Allow List (Blacklist):\n{domain}\nURL will not be opened.",
-            )
-            return
-
-        # Add to history and update UI (we keep the last scanned message even if we stop)
-        self.add_to_history(url)
-        self.set_status_bar(f"Last scanned: {url}", "#1976d2")
-        # self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
-
-        # If domain allowed, open immediately
-        if domain in self.allow_domains:
+        # Final check and open: ensures only one call to webbrowser.open(url)
+        if should_open:
             webbrowser.open(url)
-        else:
-            # Ask user
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Open URL?")
-            layout = QVBoxLayout(dialog)
-            label = QLabel(f"Do you want to open this link?\n\n{url}")
-            layout.addWidget(label)
-            skip_checkbox = QCheckBox(f"Don't ask again for this domain ({domain})")
-            layout.addWidget(skip_checkbox)
-            btn_row = QHBoxLayout()
-            yes_btn = QPushButton("Yes")
-            no_btn = QPushButton("No")
-            btn_row.addWidget(yes_btn)
-            btn_row.addWidget(no_btn)
-            layout.addLayout(btn_row)
-            dialog.setLayout(layout)
-
-            result = None
-
-            def accept():
-                nonlocal result
-                result = True
-                dialog.accept()
-
-            def reject():
-                nonlocal result
-                result = False
-                dialog.reject()
-
-            yes_btn.clicked.connect(accept)
-            no_btn.clicked.connect(reject)
-            dialog.exec()
-            if result:
-                if skip_checkbox.isChecked() and (domain not in self.allow_domains):
-                    self.allow_domains.append(domain)
-                    self.save_config()
-                webbrowser.open(url)
 
         # After handling the scanned URL, the listener may auto-stop.
-        # Schedule a UI refresh shortly after to reflect the listener state (Not Listening).
         QTimer.singleShot(
             50, lambda: (self.update_listen_buttons(), self.update_status_indicator())
         )
