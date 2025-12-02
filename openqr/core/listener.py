@@ -1,4 +1,3 @@
-# qr_listener.py
 from typing import List
 
 from PyQt6.QtCore import (
@@ -21,111 +20,87 @@ log = logger.setup_logger()
 
 class QRListener(QObject):
     """
-    Listens for QR code scans via Qt keyboard events and ensures
-    thread-safe buffer manipulation and correct GUI-thread interactions.
+    Thread-safe QR Listener for keyboard-scanner input.
 
-    Notes:
-    - This object should live in the GUI/main thread (create it there).
-      If you call start_listening()/stop_listening() from background threads,
-      they will schedule the event-filter install/remove on the object's (GUI) thread.
-    - prefix and suffix are normalized so all newline variants are treated as '\r'.
+    Features:
+    - canonicalizes prefix/suffix newlines
+    - extracts multiple scans from a single chunk
+    - preserves partial prefix tails
+    - timeout to clear partial buffers
+    - stop_after_first_scan support (safe GUI-thread stop)
     """
 
-    # public signal consumers will connect to
     url_scanned = pyqtSignal(str)
-
-    # internal signal used to ensure emission happens on this object's thread
     _dispatch_scanned = pyqtSignal(str)
 
-    def __init__(self, timeout: float = 1.0, prefix: str = "", suffix: str = "\r"):
-        """
-        :param timeout: seconds of inactivity after which a partial buffer is cleared. 0 or None disables.
-        :param prefix: optional prefix to expect at the start of a scan (normalized)
-        :param suffix: suffix that denotes end-of-scan (normalized). defaults to '\r'
-        """
+    def __init__(
+        self,
+        timeout: float = 1.0,
+        prefix: str = "",
+        suffix: str = "\r",
+        stop_after_first_scan: bool = False,
+    ):
         super().__init__()
         self.timeout = float(timeout) if timeout else 0.0
         self._scanner_keystroke_buffer = ""
         self._event_filter = None
         self.is_listening = False
 
-        # normalize prefix/suffix to canonical representation
-        def _norm_ending(s: str) -> str:
-            if not s:
-                return s
-            return s.replace("\r\n", "\r").replace("\n", "\r")
-
-        self.prefix = _norm_ending(prefix)
-        self.suffix = _norm_ending(suffix)
+        self.prefix = functions.normalize_newlines(prefix)
+        self.suffix = functions.normalize_newlines(suffix)
+        self.stop_after_first_scan = bool(stop_after_first_scan)
 
         self._mutex = QMutex()
 
-        # timer to clear partial buffers after inactivity
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._clear_buffer_on_timeout)
 
-        # connect internal dispatcher so emissions execute in this object's thread
-        # (AutoConnection becomes QueuedConnection if emitted from another thread).
+        # Ensure emission happens on this object's thread
         self._dispatch_scanned.connect(self._on_dispatch_scanned)
 
         log.info(
-            f"QRListener initialized with prefix={repr(self.prefix)}, suffix={repr(self.suffix)}, timeout={self.timeout}"
+            f"QRListener initialized with prefix={repr(self.prefix)}, "
+            f"suffix={repr(self.suffix)}, timeout={self.timeout}, "
+            f"stop_after_first_scan={self.stop_after_first_scan}"
         )
 
     # ---------------------
-    # Public control methods
+    # Public API
     # ---------------------
     def start_listening(self):
-        """
-        Starts global listening. Safe to call from other threads:
-        installEventFilter will be scheduled on this object's thread.
-        """
         app = QApplication.instance()
         if not app:
             log.error("QApplication must be running before starting QRListener.")
             return
 
-        # set listening flag under mutex to avoid races with feed_data
         with QMutexLocker(self._mutex):
             self.is_listening = True
 
-        # schedule event filter install to run on this object's thread (Queued)
-        # this allows callers from other threads to safely request start
+        # Install event filter on this object's thread via queued invocation
         QMetaObject.invokeMethod(
             self, "_install_event_filter", Qt.ConnectionType.QueuedConnection
         )
 
-        log.info("QRListener requested start (install event filter scheduled).")
+        log.info("QRListener requested start (install scheduled).")
 
     def stop_listening(self):
-        """
-        Stops listening and cleans up. Safe to call from other threads:
-        removeEventFilter will be scheduled on this object's thread.
-        """
-        # set listening flag under lock so feed_data sees the change
+        # set flag under lock so feed_data sees it
         with QMutexLocker(self._mutex):
             self.is_listening = False
 
-        # schedule removal of event filter on this object's thread
+        # remove event filter on this object's thread via queued invocation
         QMetaObject.invokeMethod(
             self, "_remove_event_filter", Qt.ConnectionType.QueuedConnection
         )
 
-        # stop timer and clear buffer under mutex
         with QMutexLocker(self._mutex):
             self._timer.stop()
             self._scanner_keystroke_buffer = ""
 
-        log.info("QRListener requested stop (remove event filter scheduled).")
+        log.info("QRListener requested stop (remove scheduled).")
 
     def set_prefix_suffix(self, prefix: str, suffix: str):
-        """
-        Set prefix and suffix (they are normalized).
-        Prefer calling this from the GUI thread; if calling from another thread,
-        be aware that feed_data may run concurrently.
-        """
-        # norm = lambda s: s.replace("\r\n", "\r").replace("\n", "\r") if s else s
         with QMutexLocker(self._mutex):
             self.prefix = functions.normalize_newlines(prefix)
             self.suffix = functions.normalize_newlines(suffix)
@@ -133,84 +108,74 @@ class QRListener(QObject):
             f"Prefix set to: {repr(self.prefix)}, Suffix set to: {repr(self.suffix)}"
         )
 
+    def set_stop_after_first_scan(self, enabled: bool):
+        with QMutexLocker(self._mutex):
+            self.stop_after_first_scan = bool(enabled)
+        log.info(f"stop_after_first_scan set to: {self.stop_after_first_scan}")
+
     # ---------------------
     # Feeding and processing
     # ---------------------
     def feed_data(self, chunk: str):
         """
-        Thread-safe append + process. Handles multiple complete messages in a single chunk.
-        This method is safe to call from any thread.
+        Append incoming data (thread-safe). Processes multiple full scans in a single chunk.
         """
-
         if chunk in ("\r\n", "\n"):
             chunk = "\r"
 
         messages: List[str] = []
 
         with QMutexLocker(self._mutex):
-            # check listening state under lock to avoid races with stop_listening
             if not self.is_listening:
-                log.debug("feed_data called while not listening — ignoring chunk.")
+                log.debug("feed_data called while not listening — ignoring.")
                 return
 
-            # append chunk
             self._scanner_keystroke_buffer += chunk
             log.debug(f"Buffer updated: {repr(self._scanner_keystroke_buffer)}")
 
-            # restart inactivity timer
             if self.timeout and self.timeout > 0:
                 self._timer.start(int(self.timeout * 1000))
 
-            # PREFIX handling:
-            # If prefix is configured, try to find it. If not found, keep only
-            # up to len(prefix)-1 trailing chars as possible partial-prefix.
+            # Prefix handling: keep possible prefix-suffix tails if not yet present
             if self.prefix:
                 idx = self._scanner_keystroke_buffer.find(self.prefix)
                 if idx == -1:
-                    # no full prefix in buffer — keep potential prefix tail
                     max_keep = max(0, len(self.prefix) - 1)
                     if len(self._scanner_keystroke_buffer) > max_keep:
                         self._scanner_keystroke_buffer = self._scanner_keystroke_buffer[
                             -max_keep:
                         ]
                 elif idx > 0:
-                    # drop garbage before prefix
                     self._scanner_keystroke_buffer = self._scanner_keystroke_buffer[
                         idx:
                     ]
 
-            # EXTRACT all complete messages delimited by suffix
+            # Extract complete messages by suffix
             if self.suffix:
                 while True:
                     end_pos = self._scanner_keystroke_buffer.find(self.suffix)
                     if end_pos == -1:
                         break
-                    # include suffix
                     raw = self._scanner_keystroke_buffer[: end_pos + len(self.suffix)]
                     messages.append(raw)
-                    # remove extracted message from buffer
                     self._scanner_keystroke_buffer = self._scanner_keystroke_buffer[
                         end_pos + len(self.suffix) :
                     ]
-            else:
-                # no suffix configured; nothing to extract yet
-                pass
 
-        # Process messages outside of lock (emitting signals while unlocked)
+        # Process outside lock
         for raw in messages:
             try:
                 self.process_scanned_data(raw)
             except Exception:
-                log.exception("Error while processing scanned message (continuing)")
+                log.exception("Error processing scanned data")
 
     def process_scanned_data(self, data: str):
         """
-        Strips prefix/suffix and dispatches the clean URL via internal safe dispatch.
-        Note: data is expected to be normalized (newlines canonicalized to '\r').
+        Validate prefix/suffix, strip them, and dispatch the URL.
+        If stop_after_first_scan is enabled, schedule stopping.
         """
         log.debug(f"Processing scanned data: {repr(data)}")
 
-        # Guard again in case something slipped through
         if (self.prefix and not data.startswith(self.prefix)) or (
             self.suffix and not data.endswith(self.suffix)
         ):
@@ -223,22 +188,29 @@ class QRListener(QObject):
         if self.suffix:
             url = url[: -len(self.suffix)]
 
-        log.info(f"Prefix and suffix stripped. Dispatching scanned URL: {url}")
-        # Emit through internal dispatcher so emission executes on this object's thread.
-        # If called from another thread, this signal will be queued and run on this object's thread.
+        log.info(f"Dispatching scanned URL: {url}")
+        # Ensure emission happens on the object's thread
         self._dispatch_scanned.emit(url)
 
+        # Stop after first if enabled (schedule stop on GUI thread)
+        with QMutexLocker(self._mutex):
+            stop_flag = self.stop_after_first_scan
+
+        if stop_flag:
+            log.info("stop_after_first_scan enabled — scheduling stop.")
+            QMetaObject.invokeMethod(
+                self,
+                "_stop_listening_in_gui_thread",
+                Qt.ConnectionType.QueuedConnection,
+            )
+
     # ---------------------
-    # Internal dispatch slot
+    # Internal signal slot for emission
     # ---------------------
     @pyqtSlot(str)
     def _on_dispatch_scanned(self, url: str):
-        """
-        Runs on the object's thread — performs the final emit to public signal.
-        Keep this slot small; it's executed on the object's (GUI) thread.
-        """
         try:
-            log.info(f"Emitting url_scanned signal with URL: {url}")
+            log.info(f"Emitting url_scanned with URL: {url}")
             self.url_scanned.emit(url)
         except Exception:
             log.exception("Exception while emitting url_scanned")
@@ -250,7 +222,7 @@ class QRListener(QObject):
     def _clear_buffer_on_timeout(self):
         with QMutexLocker(self._mutex):
             if self._scanner_keystroke_buffer:
-                log.debug("Clearing scanner buffer due to timeout/inactivity.")
+                log.debug("Clearing scanner buffer due to timeout.")
                 self._scanner_keystroke_buffer = ""
 
     # ---------------------
@@ -258,10 +230,6 @@ class QRListener(QObject):
     # ---------------------
     @pyqtSlot()
     def _install_event_filter(self):
-        """
-        Install the global event filter. This must be run on the GUI/object thread.
-        It's marked as a slot and scheduled via QMetaObject.invokeMethod (Queued).
-        """
         if self._event_filter:
             log.debug("Event filter already installed; skipping.")
             return
@@ -273,25 +241,20 @@ class QRListener(QObject):
             )
             return
 
-        # create filter with a reference to self (so it calls feed_data)
         self._event_filter = KeyboardScannerEventFilter(self)
         app.installEventFilter(self._event_filter)
         log.info("Scanner event filter installed globally (on object thread).")
 
     @pyqtSlot()
     def _remove_event_filter(self):
-        """
-        Remove the event filter. This must be run on the GUI/object thread.
-        """
         if not self._event_filter:
-            log.debug("No event filter installed; skipping removal.")
+            log.debug("No event filter to remove.")
             return
 
         app = QApplication.instance()
         if not app:
             log.warning(
-                "QApplication instance not available when removing event filter. "
-                "Clearing local reference."
+                "QApplication instance not available when removing event filter. Clearing local ref."
             )
             self._event_filter = None
             return
@@ -300,6 +263,17 @@ class QRListener(QObject):
             app.removeEventFilter(self._event_filter)
             log.info("Scanner event filter removed (on object thread).")
         except Exception:
-            log.exception("Error while removing scanner event filter (continuing).")
+            log.exception("Error while removing scanner event filter.")
         finally:
             self._event_filter = None
+
+    # ---------------------
+    # Safe stop invoker that runs on GUI thread
+    # ---------------------
+    @pyqtSlot()
+    def _stop_listening_in_gui_thread(self):
+        # This runs on the listener's thread (should be GUI). Calls stop_listening to ensure proper cleanup.
+        try:
+            self.stop_listening()
+        except Exception:
+            log.exception("Exception while stopping listener in GUI thread.")
