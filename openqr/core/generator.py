@@ -95,7 +95,12 @@ class QRGenerator:
         try:
             result = validators.url(url)
             log.debug(f"Validating URL: {url} -> {result}")
-            return result
+            # validators.url returns True for valid URLs, ValidationError for invalid ones
+            if result is True:
+                return True
+            else:
+                # result is a ValidationError object for invalid URLs
+                return False
         except Exception as e:
             log.error(f"Exception during URL validation: {e}")
             return False

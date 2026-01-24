@@ -416,7 +416,7 @@ class OpenQRApp(QMainWindow):
         self.statusBar().setSizeGripEnabled(False)
         self.status_bar.showMessage("Ready")
         self.update_listen_buttons()
-        self.update_status_indicator()
+        self.status_indicator()
         log.debug("UI components created.")
 
         menu_bar = self.menuBar()
@@ -425,7 +425,7 @@ class OpenQRApp(QMainWindow):
         file_menu.addAction("Domain Management", self.open_domain_settings_dialog)
         file_menu.addAction("Help", self.show_help_dialog)
 
-    def update_status_indicator(self, prefix_detected=False, url=None):
+    def status_indicator(self, prefix_detected=False, url=None):
         if self.qr_code_listener.is_listening:
             self.status_indicator.setText("Listening")
             self.status_indicator.setStyleSheet(
@@ -469,17 +469,17 @@ class OpenQRApp(QMainWindow):
         if not self.qr_code_listener.is_listening:
             log.info("Start listening pressed.")
             self.qr_code_listener.start_listening()
-            self.set_status_bar("Listening for QR codes...", "#388e3c")
+            self.status_bar("Listening for QR codes...", "#388e3c")
             self.update_listen_buttons()
-            self.update_status_indicator()
+            self.status_indicator()
 
     def stop_listening(self):
         if self.qr_code_listener.is_listening:
             log.info("Stop listening pressed.")
             self.qr_code_listener.stop_listening()
-            self.set_status_bar("Ready", "")  # old value => #b71c1c
+            self.status_bar("Ready", "")  # old value => #b71c1c
             self.update_listen_buttons()
-            self.update_status_indicator()
+            self.status_indicator()
 
     def update_listen_buttons(self):
         if self.qr_code_listener.is_listening:
@@ -632,13 +632,13 @@ class OpenQRApp(QMainWindow):
         if domain in self.allow_domains:
             log.info(f"Domain on allow list, not asking again: {domain}")
             self.add_to_history(url)
-            self.set_status_bar("Last scanned URL", "#1976d2")
+            self.status_bar("Last scanned URL", "#1976d2")
             self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
             log.info(f"Opening URL in default web browser: {url}")
             webbrowser.open(url)
         else:
             self.add_to_history(url)
-            self.set_status_bar("Last scanned URL", "#1976d2")
+            self.status_bar("Last scanned URL", "#1976d2")
             self.last_scanned_label.setText(f'<a href="{url}">Last scanned: {url}</a>')
             dialog = QDialog(self)
             dialog.setWindowTitle("Open URL?")
@@ -816,6 +816,6 @@ class OpenQRApp(QMainWindow):
             )
             self.save_config()
 
-    def set_status_bar(self, message, color):
+    def status_bar(self, message, color):
         self.status_bar.setStyleSheet(f"background-color: {color}; color: white;")
         self.status_bar.showMessage(message)
