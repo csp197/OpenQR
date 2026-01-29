@@ -121,10 +121,10 @@ version-file:
 	@echo "Interpolating version $(CLEAN_VERSION) into version.txt"
 ifeq ($(OS),Windows_NT)
 	@sed -e "s/\$${VERSION}/$(CLEAN_VERSION)/g" \
-	     -e "s/\$${VERSION_COMMA}/$(VERSION)/g" \
+	     -e "s/\$${VERSION}/$(VERSION)/g" \
 	     version.txt.template > version.txt
 else
 	@sed -e "s/\$${VERSION}/$(CLEAN_VERSION)/g" \
-	     -e "s/\$${VERSION_COMMA}/$(VERSION)/g" \
+	     -e "s/\$${VERSION}/$(VERSION)/g" \
 	     version.txt.template > version.txt
 endif
