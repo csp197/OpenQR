@@ -2,8 +2,9 @@ name: Build and Release OpenQR
 
 on:
   push:
-    branches: [main]
+    branches: ["main"]
   pull_request:
+    branches: ["main"]
 
 permissions:
   contents: write
@@ -44,20 +45,28 @@ jobs:
         shell: pwsh
         run: |
           if (!(Test-Path "dist\OpenQR.exe")) { throw "Build failed: Exe not found" }
+          dir dist
           .\dist\OpenQR.exe --help || echo "Smoke test exit code ignored"
 
       - name: Smoke test (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          ls -R dist/
+          ls -la dist
           ./dist/OpenQR --help || echo "Smoke test exit code ignored"
 
-      - name: Upload artifacts
+      - name: Upload Windows executable
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenQR-${{ runner.os }}
-          path: dist/
-          if-no-files-found: error
+          name: OpenQR-windows
+          path: dist/OpenQR.exe
+      
+      - name: Upload macOS app
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenQR-macos
+          path: dist/OpenQR.app
 
   release:
     name: Create GitHub Release
