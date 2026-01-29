@@ -41,13 +41,6 @@ endif
 .PHONY: all
 all: build
 
-# --------------------
-# Versioning for Windows
-# --------------------
-.PHONY: version-file
-version-file:
-	@echo "Updating version.txt to $(VERSION)"
-	@echo $(VERSION) > version.txt
 
 # --------------------
 # Setup & Maintenance
@@ -101,7 +94,7 @@ test: setup
 # Build
 # --------------------
 .PHONY: build
-build: setup version-file
+build: setup
 ifeq ($(OS),Windows_NT)
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
