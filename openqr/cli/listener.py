@@ -1,4 +1,4 @@
-from pyzbar.zbar_library import sys
+# from pyzbar.zbar_library import sys
 from openqr.utils import logger
 
 log = logger.setup_logger()

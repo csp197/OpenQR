@@ -1,9 +1,9 @@
 import pytest
-from pytestqt.qtbot import QtBot
+# from pytestqt.qtbot import QtBot
 from pytestqt.exceptions import TimeoutError
 from openqr.core.listener import QRListener
-from unittest.mock import MagicMock, patch
-from PyQt6.QtWidgets import QApplication, QWidget
+# from unittest.mock import MagicMock, patch
+# from PyQt6.QtWidgets import QApplication, QWidget
 
 
 # QRListener doesn't need QApplication at initialization, only when start_listening() is called

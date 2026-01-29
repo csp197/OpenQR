@@ -1,4 +1,4 @@
-import pytest
+# import pytest
 from openqr.qt.constants import HELP_MESSAGE
 
 

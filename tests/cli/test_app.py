@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
+# MagicMock, call
 from pathlib import Path
 from typer.testing import CliRunner
 
@@ -49,7 +50,7 @@ def test_make_command_invalid_url(mock_generate, runner):
     url = "not a url"
 
     # The command might raise an error or handle it gracefully
-    result = runner.invoke(app, ["make", url])
+    _ = runner.invoke(app, ["make", url])
 
     # generate_qr_code should still be called (it will raise ValueError)
     mock_generate.assert_called_once_with(url)

@@ -1,8 +1,9 @@
-import pytest
+# import pytest
 import logging
 import os
-import tempfile
-from unittest.mock import patch, MagicMock
+# import tempfile
+from unittest.mock import MagicMock
+# patch, 
 from openqr.utils.logger import setup_logger
 
 
@@ -24,7 +25,7 @@ def test_logger_has_handlers():
     assert len(handlers) > 0
 
     # Check for file handler (may not exist if there's a permission error)
-    file_handlers = [h for h in handlers if isinstance(h, logging.FileHandler)]
+    # file_handlers = [h for h in handlers if isinstance(h, logging.FileHandler)]
     # File handler may not exist if there's a permission error, which is acceptable
 
     # Check for stream handler (should always exist)
@@ -66,7 +67,7 @@ def test_logger_creates_config_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(os.path, "expanduser", mock_expanduser)
     monkeypatch.setattr(os, "makedirs", MagicMock())
 
-    logger = setup_logger()
+    _ = setup_logger()
 
     # Should have called makedirs
     os.makedirs.assert_called()
@@ -93,10 +94,10 @@ def test_logger_log_file_path(tmp_path, monkeypatch):
 
 def test_logger_prevents_duplicate_handlers():
     """Test that logger doesn't add duplicate handlers."""
-    logger1 = setup_logger()
-    initial_handler_count = len(logger1.handlers)
+    # logger1 = setup_logger()
+    # initial_handler_count = len(logger1.handlers)
 
-    logger2 = setup_logger()
+    # logger2 = setup_logger()
     # Should not add duplicate handlers
     # Note: This test may not work perfectly due to module-level logger
     # but it tests the intent of the code

@@ -1,7 +1,7 @@
 from openqr.core.generator import QRGenerator
 import pytest
-import tempfile
-import os
+# import tempfile
+# import os
 from pathlib import Path
 from PIL import Image
 from PyQt6.QtWidgets import QApplication
@@ -224,8 +224,8 @@ def test_qr_code_clipboard_format(generator, qapp):
 
 def test_copy_qr_code_to_clipboard_without_qapp(generator):
     """Test that copying to clipboard raises error without QApplication."""
-    url = "https://www.example.com"
-    qr_code = generator.generate_qr_code(url)
+    # url = "https://www.example.com"
+    # qr_code = generator.generate_qr_code(url)
 
     # Temporarily remove QApplication instance
     app = QApplication.instance()

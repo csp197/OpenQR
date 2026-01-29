@@ -1,8 +1,8 @@
 import pytest
-import tempfile
-import json
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+# import tempfile
+# import json
+# from pathlib import Path
+# from unittest.mock import patch, MagicMock
 from openqr.core.generator import QRGenerator
 from openqr.core.listener import QRListener
 from openqr.qt.app import OpenQRApp

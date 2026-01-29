@@ -539,7 +539,7 @@ class OpenQRApp(QMainWindow):
         # Convert PIL image to RGBA bytes
         qr_rgba = self.qr_image.convert("RGBA")
         w, h = qr_rgba.size
-        data = qr_rgba.tobytes("raw", "RGBA")
+        # data = qr_rgba.tobytes("raw", "RGBA")
         # Convert RGBA bytes to QPixmap
         buf = io.BytesIO()
         self.qr_image.save(buf, format="PNG")

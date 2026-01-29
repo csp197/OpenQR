@@ -1,13 +1,14 @@
-import pytest
-import sys
-from unittest.mock import patch, MagicMock
-from openqr.utils import printer
+# import pytest
+# import sys
+from unittest.mock import patch
+# MagicMock
+# from openqr.utils import printer
 
 
 def test_main_help_flag(capsys):
     """Test main.py with --help flag."""
     with patch("sys.argv", ["main.py", "--help"]):
-        with patch("sys.exit") as mock_exit:
+        with patch("sys.exit") as _:
             # Import and run main
             import main
 
@@ -20,7 +21,7 @@ def test_main_help_flag(capsys):
 def test_main_version_flag(capsys):
     """Test main.py with --version flag."""
     with patch("sys.argv", ["main.py", "--version"]):
-        with patch("sys.exit") as mock_exit:
+        with patch("sys.exit") as _:
             # Import and run main
             import main
 
@@ -46,8 +47,8 @@ def test_global_exception_hook():
     test_exception = ValueError("Test error")
     test_tb = None
 
-    with patch("sys.stderr") as mock_stderr:
-        with patch("sys.exit") as mock_exit:
+    with patch("sys.stderr") as _:
+        with patch("sys.exit") as _:
             try:
                 main.global_exception_hook(
                     type(test_exception), test_exception, test_tb

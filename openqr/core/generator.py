@@ -1,5 +1,5 @@
-import sys
-from io import BytesIO
+# import sys
+# from io import BytesIO
 import validators  # Library for validating URLs
 import qrcode  # Library to generate QR codes
 from PIL import Image  # Library for handling image operations
