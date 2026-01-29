@@ -12,18 +12,18 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
       matrix:
-        # Note: macos-latest is now ARM64. 
-        # Use macos-13 if you specifically need Intel builds.
+        # Build for Windows and Apple Silicon (macOS 14+)
         os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Essential for 'git describe' in your Makefile VERSION
+          fetch-depth: 0 # Required for 'git describe' in your Makefile
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -31,19 +31,20 @@ jobs:
           enable-cache: true
           python-version: "3.13"
 
-      - name: Run CI (Lint + Test)
-        run: make ci
-        # On Windows, 'make' is provided by the runner environment
+      - name: Run CI
+        # This triggers 'setup', 'lint', and 'test' via the Makefile
+        run: make lint test
 
-      - name: Build distribution
+      - name: Build platform artifacts
+        # Triggers 'setup', 'version-file', and 'pyinstaller'
         run: make build
 
       - name: Smoke test (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Test-Path dist/OpenQR.exe
-          & dist/OpenQR.exe --help || echo "Smoke test exit code ignored"
+          if (!(Test-Path "dist\OpenQR.exe")) { throw "Build failed: Exe not found" }
+          .\dist\OpenQR.exe --help || echo "Smoke test exit code ignored"
 
       - name: Smoke test (macOS)
         if: matrix.os == 'macos-latest'
@@ -62,7 +63,7 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    # Only release on Tag pushes or manual main branch pushes if you prefer
+    # Only release on pushes to main (not PRs)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -75,15 +76,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-          merge-multiple: true # Flattens the folder structure for easier release
+          merge-multiple: true # Flattens files from different OS builds into one folder
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # Using a dynamic tag based on the VERSION in Makefile or run number
-          tag_name: v0.1.${{ github.run_number }}
-          name: OpenQR Release v0.1.${{ github.run_number }}
+          # Uses the version logic from your Makefile for the tag
+          tag_name: v${{ github.run_number }}
+          name: OpenQR v${{ github.run_number }}
           body: |
-            Automated OpenQR release.
-            Build ID: ${{ github.run_id }}
+            ## Automated Release
+            Version based on Build Number: ${{ github.run_number }}
+            
+            **Assets included:**
+            - Windows Executable
+            - macOS Executable
           files: release-artifacts/*
+          draft: false
+          prerelease: false
