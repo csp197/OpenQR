@@ -1,116 +1,89 @@
-name: Build and Release OpenQR executables
+name: Build and Release OpenQR
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
   pull_request:
-    branches: ["main"]
 
 permissions:
-  contents: write # Required for creating releases and uploading release assets
+  contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    outputs:
-      artifact-path: dist/OpenQR.exe
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Note: macos-latest is now ARM64. 
+        # Use macos-13 if you specifically need Intel builds.
+        os: [windows-latest, macos-latest]
+
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          python-version: "3.10"
+          fetch-depth: 0 # Essential for 'git describe' in your Makefile VERSION
 
-      - name: Setup virtual environment and install dependencies
-        run: make setup
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
 
-      - name: Run tests
-        run: make test
+      - name: Run CI (Lint + Test)
+        run: make ci
+        # On Windows, 'make' is provided by the runner environment
 
-      - name: Build Windows executable
-        run: make dist
+      - name: Build distribution
+        run: make build
 
-      - name: Smoke test Windows executable
+      - name: Smoke test (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          dir dist
-          dist\OpenQR.exe --help || echo "Executed successfully"
+          Test-Path dist/OpenQR.exe
+          & dist/OpenQR.exe --help || echo "Smoke test exit code ignored"
 
-      - name: Upload Windows executable
+      - name: Smoke test (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          ls -R dist/
+          ./dist/OpenQR --help || echo "Smoke test exit code ignored"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OpenQR-windows-executable
-          path: dist/OpenQR.exe
-
-  build-macos:
-    runs-on: macos-latest
-    outputs:
-      artifact-path: dist/OpenQR
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.10"
-
-      - name: Setup virtual environment and install dependencies
-        run: make setup
-
-      - name: Run tests
-        run: make test
-
-      - name: Build macOS executable
-        run: make dist
-
-      - name: Smoke test macOS executable
-        run: |
-          ls -la dist/
-          ./dist/OpenQR --help || echo "Executed successfully"
-
-      - name: Upload macOS executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenQR-macos-executable
-          path: dist/OpenQR
+          name: OpenQR-${{ runner.os }}
+          path: dist/
+          if-no-files-found: error
 
   release:
-    needs: [build-windows, build-macos]
+    name: Create GitHub Release
+    needs: build
     runs-on: ubuntu-latest
+    # Only release on Tag pushes or manual main branch pushes if you prefer
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download Windows executable
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: OpenQR-windows-executable
-          path: dist/
+          path: release-artifacts
+          merge-multiple: true # Flattens the folder structure for easier release
 
-      - name: Download macOS executable
-        uses: actions/download-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: OpenQR-macos-executable
-          path: dist/
-
-      - name: Create and push tag
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag v${{ github.run_number }}
-          git push origin v${{ github.run_number }}
-
-      - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ github.run_number }}
-          name: OpenQR Release v${{ github.run_number }}
+          # Using a dynamic tag based on the VERSION in Makefile or run number
+          tag_name: v0.1.${{ github.run_number }}
+          name: OpenQR Release v0.1.${{ github.run_number }}
           body: |
-            Automated release of OpenQR executables:
-            - Windows (OpenQR.exe)
-            - MacOS (OpenQR.app)
-          files: |
-            dist/OpenQR.exe
-            dist/OpenQR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            Automated OpenQR release.
+            Build ID: ${{ github.run_id }}
+          files: release-artifacts/*

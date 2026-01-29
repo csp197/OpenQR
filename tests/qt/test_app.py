@@ -33,11 +33,11 @@
 #             self.qr_image = None
 #             self.qr_fg_color = "black"
 #             self.qr_bg_color = "white"
-        
+
 #         # Import methods from OpenQRApp that we want to test
 #         def get_config_file_path(self):
 #             return self.config_file
-        
+
 #         def save_config(self):
 #             data = {
 #                 "prefix": self.scanner_prefix,
@@ -94,7 +94,7 @@
 #                 self.scan_history.pop(0)
 #                 if hasattr(self, 'history_list') and self.history_list:
 #                     self.history_list.takeItem(0)
-        
+
 #         # Add methods from OpenQRApp that tests need
 #         def add_to_history(self, url):
 #             import datetime
@@ -102,7 +102,7 @@
 #             self.scan_history.append({"url": url, "timestamp": ts})
 #             self.save_scan_history()
 #             self.refresh_history_list()
-        
+
 #     config_file = tmp_path / "test_config.json"
 #     app = MinimalApp(str(config_file))
 #     return app
@@ -188,11 +188,11 @@
 #     minimal_app.allow_domains = ["example.com"]
 #     minimal_app.deny_domains = ["blocked.com"]
 #     minimal_app.save_config()
-    
+
 #     # Create new app and load config
 #     minimal_app2 = type(minimal_app)(minimal_app.config_file)
 #     minimal_app2.load_config()
-    
+
 #     assert minimal_app2.scanner_prefix == "test_prefix_"
 #     assert minimal_app2.scanner_suffix == "\n"
 #     assert minimal_app2.allow_domains == ["example.com"]
@@ -232,14 +232,14 @@
 #     """Test getting config file path."""
 #     # Mock home directory
 #     monkeypatch.setattr(os.path, "expanduser", lambda x: str(tmp_path))
-    
+
 #     # Create app with mocked initialization to avoid UI setup
 #     with patch.object(OpenQRApp, '_init_ui', lambda x: None), \
 #          patch.object(OpenQRApp, 'load_config', lambda x: None), \
 #          patch.object(OpenQRApp, 'load_scan_history', lambda x: None):
 #         app = OpenQRApp()
 #         config_path = app.get_config_file_path()
-        
+
 #         assert config_path is not None
 #         assert ".openqr" in config_path or "openqr_config.json" in config_path
 
@@ -251,18 +251,18 @@
 #     minimal_app.allow_domains = []
 #     minimal_app.status_bar = MagicMock()
 #     minimal_app.last_scanned_label = MagicMock()
-    
+
 #     # Mock QMessageBox to avoid showing dialogs
 #     with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #         mock_msgbox.warning = MagicMock()
 #         mock_msgbox.information = MagicMock()
-        
+
 #         # Mock dialog
 #         mock_dialog = MagicMock()
 #         mock_dialog.exec.return_value = True
 #         mock_checkbox = MagicMock()
 #         mock_checkbox.isChecked.return_value = False
-        
+
 #         # Use bound method from OpenQRApp
 #         with patch('openqr.qt.app.QDialog', return_value=mock_dialog), \
 #              patch('openqr.qt.app.QLabel'), \
@@ -272,7 +272,7 @@
 #             # Bind the method to minimal_app
 #             bound_method = OpenQRApp._on_url_scanned.__get__(minimal_app, type(minimal_app))
 #             bound_method("https://example.com")
-        
+
 #         # Should add to history
 #         assert len(minimal_app.scan_history) > 0
 
@@ -281,10 +281,10 @@
 # def test_on_url_scanned_invalid_url(mock_open, minimal_app):
 #     """Test handling of invalid scanned URL."""
 #     minimal_app.qr_code_generator.validate_url.return_value = False
-    
+
 #     with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #         minimal_app._on_url_scanned("not a url")
-        
+
 #         # Should show warning
 #         mock_msgbox.warning.assert_called_once()
 
@@ -294,10 +294,10 @@
 #     """Test handling of blocked domain."""
 #     minimal_app.qr_code_generator.validate_url.return_value = True
 #     minimal_app.deny_domains = ["blocked.com"]
-    
+
 #     with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #         minimal_app._on_url_scanned("https://blocked.com/page")
-        
+
 #         # Should show warning about blocked domain
 #         mock_msgbox.warning.assert_called_once()
 
@@ -309,11 +309,11 @@
 #     minimal_app.allow_domains = ["example.com"]
 #     minimal_app.status_bar = MagicMock()
 #     minimal_app.last_scanned_label = MagicMock()
-    
+
 #     # Use bound method from OpenQRApp
 #     bound_method = OpenQRApp._on_url_scanned.__get__(minimal_app, type(minimal_app))
 #     bound_method("https://example.com/page")
-    
+
 #     # Should open URL without asking
 #     mock_open.assert_called_once_with("https://example.com/page")
 #     # Should add to history
@@ -324,7 +324,7 @@
 #     """Test URL validation in app."""
 #     minimal_app.qr_code_generator.validate_url.return_value = True
 #     assert minimal_app.qr_code_generator.validate_url("https://example.com") is True
-    
+
 #     minimal_app.qr_code_generator.validate_url.return_value = False
 #     assert minimal_app.qr_code_generator.validate_url("not a url") is False
 
@@ -332,10 +332,10 @@
 # def test_generate_qr_code(minimal_app):
 #     """Test QR code generation."""
 #     from PIL import Image
-    
+
 #     minimal_app.qr_code_generator.validate_url.return_value = True
 #     minimal_app.qr_code_generator.generate_qr_code.return_value = Image.new("RGB", (100, 100))
-    
+
 #     # Mock UI elements
 #     minimal_app.url_input = MagicMock()
 #     minimal_app.url_input.text.return_value = "https://example.com"
@@ -344,11 +344,11 @@
 #     minimal_app.save_button = MagicMock()
 #     minimal_app.copy_button = MagicMock()
 #     minimal_app.status_bar = MagicMock()
-    
+
 #     # Use bound method from OpenQRApp
 #     bound_method = OpenQRApp.generate_qr_code.__get__(minimal_app, type(minimal_app))
 #     bound_method()
-    
+
 #     # Should call generator
 #     minimal_app.qr_code_generator.generate_qr_code.assert_called_once()
 
@@ -356,14 +356,14 @@
 # def test_save_qr_code(minimal_app, tmp_path):
 #     """Test saving QR code."""
 #     from PIL import Image
-    
+
 #     minimal_app.qr_image = Image.new("RGB", (100, 100))
 #     minimal_app.qr_code_generator.save_qr_to_file = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QFileDialog.getSaveFileName', return_value=(str(tmp_path / "test.png"), "")):
 #         with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #             minimal_app.save_qr_code()
-            
+
 #             # Should call save method
 #             minimal_app.qr_code_generator.save_qr_to_file.assert_called_once()
 
@@ -371,13 +371,13 @@
 # def test_copy_qr_to_clipboard(minimal_app):
 #     """Test copying QR code to clipboard."""
 #     from PIL import Image
-    
+
 #     minimal_app.qr_image = Image.new("RGB", (100, 100))
 #     minimal_app.qr_code_generator.copy_qr_code_to_clipboard = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #         minimal_app.copy_qr_to_clipboard()
-        
+
 #         # Should call copy method
 #         minimal_app.qr_code_generator.copy_qr_code_to_clipboard.assert_called_once()
 
@@ -389,9 +389,9 @@
 #     minimal_app.status_bar = MagicMock()
 #     minimal_app.update_listen_buttons = MagicMock()
 #     minimal_app.status_indicator = MagicMock()
-    
+
 #     minimal_app.start_listening()
-    
+
 #     minimal_app.qr_code_listener.start_listening.assert_called_once()
 
 
@@ -402,27 +402,27 @@
 #     minimal_app.status_bar = MagicMock()
 #     minimal_app.update_listen_buttons = MagicMock()
 #     minimal_app.status_indicator = MagicMock()
-    
+
 #     minimal_app.stop_listening()
-    
+
 #     minimal_app.qr_code_listener.stop_listening.assert_called_once()
 
 
 # def test_upload_logo_image(minimal_app, tmp_path):
 #     """Test uploading logo image."""
 #     from PIL import Image
-    
+
 #     # Create a test image
 #     test_image = Image.new("RGB", (100, 100), color="red")
 #     test_image_path = tmp_path / "test_logo.png"
 #     test_image.save(test_image_path)
-    
+
 #     minimal_app.save_config = MagicMock()
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QFileDialog.getOpenFileName', return_value=(str(test_image_path), "")):
 #         minimal_app.upload_logo_image()
-    
+
 #     assert minimal_app.logo_image_path == str(test_image_path)
 #     assert minimal_app.logo_image is not None
 #     minimal_app.save_config.assert_called_once()
@@ -433,10 +433,10 @@
 #     """Test cancelling logo upload."""
 #     minimal_app.save_config = MagicMock()
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QFileDialog.getOpenFileName', return_value=("", "")):
 #         minimal_app.upload_logo_image()
-    
+
 #     # Should not change logo if cancelled
 #     minimal_app.save_config.assert_not_called()
 #     minimal_app.generate_qr_code.assert_not_called()
@@ -445,14 +445,14 @@
 # def test_remove_logo_image(minimal_app):
 #     """Test removing logo image."""
 #     from PIL import Image
-    
+
 #     minimal_app.logo_image = Image.new("RGB", (100, 100))
 #     minimal_app.logo_image_path = "/some/path/logo.png"
 #     minimal_app.save_config = MagicMock()
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     minimal_app.remove_logo_image()
-    
+
 #     assert minimal_app.logo_image is None
 #     assert minimal_app.logo_image_path is None
 #     minimal_app.save_config.assert_called_once()
@@ -466,7 +466,7 @@
 #         mock_dialog = MagicMock()
 #         mock_dialog.exec.return_value = None
 #         mock_dialog_class.return_value = mock_dialog
-        
+
 #         # Mock all widgets
 #         with patch('openqr.qt.app.QVBoxLayout'), \
 #              patch('openqr.qt.app.QTextBrowser'), \
@@ -488,9 +488,9 @@
 #     minimal_app.qr_code_listener.is_listening = True
 #     minimal_app.status_indicator = MagicMock()
 #     minimal_app.prefix_feedback = MagicMock()
-    
+
 #     minimal_app.status_indicator()
-    
+
 #     minimal_app.status_indicator.setText.assert_called()
 #     minimal_app.status_indicator.setStyleSheet.assert_called()
 
@@ -501,9 +501,9 @@
 #     minimal_app.qr_code_listener.is_listening = False
 #     minimal_app.status_indicator = MagicMock()
 #     minimal_app.prefix_feedback = MagicMock()
-    
+
 #     minimal_app.status_indicator()
-    
+
 #     minimal_app.status_indicator.setText.assert_called()
 #     minimal_app.status_indicator.setStyleSheet.assert_called()
 
@@ -513,9 +513,9 @@
 #     minimal_app.qr_code_listener = MagicMock()
 #     minimal_app.status_indicator = MagicMock()
 #     minimal_app.prefix_feedback = MagicMock()
-    
+
 #     minimal_app.status_indicator(url="https://example.com")
-    
+
 #     minimal_app.prefix_feedback.setText.assert_called()
 #     assert "example.com" in str(minimal_app.prefix_feedback.setText.call_args)
 
@@ -525,9 +525,9 @@
 #     minimal_app.qr_code_listener = MagicMock()
 #     minimal_app.status_indicator = MagicMock()
 #     minimal_app.prefix_feedback = MagicMock()
-    
+
 #     minimal_app.status_indicator(prefix_detected=True)
-    
+
 #     minimal_app.prefix_feedback.setText.assert_called()
 #     assert "Prefix detected" in str(minimal_app.prefix_feedback.setText.call_args)
 
@@ -535,10 +535,10 @@
 # def test_pil_image_to_qpixmap(minimal_app):
 #     """Test converting PIL image to QPixmap."""
 #     from PIL import Image
-    
+
 #     test_image = Image.new("RGB", (100, 100), color="blue")
 #     pixmap = minimal_app.pil_image_to_qpixmap(test_image)
-    
+
 #     assert pixmap is not None
 #     assert not pixmap.isNull()
 
@@ -550,14 +550,14 @@
 #     minimal_app.qr_code_generator = MagicMock()
 #     minimal_app.qr_code_generator.validate_url.return_value = True
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     mock_color = MagicMock()
 #     mock_color.isValid.return_value = True
 #     mock_color.name.return_value = "#ff0000"
-    
+
 #     with patch('openqr.qt.app.QColorDialog.getColor', return_value=mock_color):
 #         minimal_app._set_color("fg")
-    
+
 #     assert minimal_app.qr_fg_color == "#ff0000"
 #     minimal_app.generate_qr_code.assert_called_once()
 
@@ -569,14 +569,14 @@
 #     minimal_app.qr_code_generator = MagicMock()
 #     minimal_app.qr_code_generator.validate_url.return_value = True
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     mock_color = MagicMock()
 #     mock_color.isValid.return_value = True
 #     mock_color.name.return_value = "#00ff00"
-    
+
 #     with patch('openqr.qt.app.QColorDialog.getColor', return_value=mock_color):
 #         minimal_app._set_color("bg")
-    
+
 #     assert minimal_app.qr_bg_color == "#00ff00"
 #     minimal_app.generate_qr_code.assert_called_once()
 
@@ -584,13 +584,13 @@
 # def test_set_color_invalid_color(minimal_app):
 #     """Test setting color with invalid color (cancelled)."""
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     mock_color = MagicMock()
 #     mock_color.isValid.return_value = False
-    
+
 #     with patch('openqr.qt.app.QColorDialog.getColor', return_value=mock_color):
 #         minimal_app._set_color("fg")
-    
+
 #     # Should not generate QR code if color is invalid
 #     minimal_app.generate_qr_code.assert_not_called()
 
@@ -600,14 +600,14 @@
 #     minimal_app.url_input = MagicMock()
 #     minimal_app.url_input.text.return_value = ""
 #     minimal_app.generate_qr_code = MagicMock()
-    
+
 #     mock_color = MagicMock()
 #     mock_color.isValid.return_value = True
 #     mock_color.name.return_value = "#ff0000"
-    
+
 #     with patch('openqr.qt.app.QColorDialog.getColor', return_value=mock_color):
 #         minimal_app._set_color("fg")
-    
+
 #     # Should not generate QR code if no URL
 #     minimal_app.generate_qr_code.assert_not_called()
 
@@ -618,12 +618,12 @@
 #     mock_item = MagicMock()
 #     mock_item.text.return_value = "2024-01-01 00:00:00 - https://example.com"
 #     minimal_app.history_list.selectedItems.return_value = [mock_item]
-    
+
 #     with patch('openqr.qt.app.QMessageBox'):
 #         # Use bound method from OpenQRApp
 #         bound_method = OpenQRApp.copy_selected_url.__get__(minimal_app, type(minimal_app))
 #         bound_method()
-    
+
 #     # Should have copied to clipboard
 #     clipboard = qapp.clipboard()
 #     clipboard_text = clipboard.text()
@@ -634,10 +634,10 @@
 #     """Test copying when no URL is selected."""
 #     minimal_app.history_list = MagicMock()
 #     minimal_app.history_list.selectedItems.return_value = []
-    
+
 #     with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #         minimal_app.copy_selected_url()
-    
+
 #     # Should not crash, but clipboard shouldn't be called
 #     # (actual behavior depends on implementation)
 
@@ -645,9 +645,9 @@
 # def test_status_bar(minimal_app):
 #     """Test setting status bar message."""
 #     minimal_app.status_bar = MagicMock()
-    
+
 #     minimal_app.status_bar("Test message", "#ff0000")
-    
+
 #     minimal_app.status_bar.setStyleSheet.assert_called_once()
 #     minimal_app.status_bar.showMessage.assert_called_once_with("Test message")
 
@@ -655,9 +655,9 @@
 # def test_status_bar_empty_color(minimal_app):
 #     """Test setting status bar with empty color."""
 #     minimal_app.status_bar = MagicMock()
-    
+
 #     minimal_app.status_bar("Test message", "")
-    
+
 #     minimal_app.status_bar.setStyleSheet.assert_called_once()
 #     minimal_app.status_bar.showMessage.assert_called_once_with("Test message")
 
@@ -665,16 +665,16 @@
 # def test_generate_qr_code_with_logo(minimal_app):
 #     """Test generating QR code with logo overlay."""
 #     from PIL import Image
-    
+
 #     minimal_app.url_input = MagicMock()
 #     minimal_app.url_input.text.return_value = "https://example.com"
 #     minimal_app.qr_code_generator = MagicMock()
 #     minimal_app.qr_code_generator.validate_url.return_value = True
-    
+
 #     # Create QR and logo images
 #     qr_image = Image.new("RGB", (200, 200), color="white")
 #     logo_image = Image.new("RGB", (50, 50), color="red")
-    
+
 #     minimal_app.qr_code_generator.generate_qr_code.return_value = qr_image
 #     minimal_app.logo_image = logo_image
 #     minimal_app.qr_label = MagicMock()
@@ -682,11 +682,11 @@
 #     minimal_app.save_button = MagicMock()
 #     minimal_app.copy_button = MagicMock()
 #     minimal_app.status_bar = MagicMock()
-    
+
 #     # Use bound method from OpenQRApp
 #     bound_method = OpenQRApp.generate_qr_code.__get__(minimal_app, type(minimal_app))
 #     bound_method()
-    
+
 #     # Should have generated QR code with logo
 #     assert minimal_app.qr_image is not None
 #     minimal_app.save_button.setEnabled.assert_called_once_with(True)
@@ -699,10 +699,10 @@
 #     minimal_app.url_input.text.return_value = "not a url"
 #     minimal_app.qr_code_generator = MagicMock()
 #     minimal_app.qr_code_generator.validate_url.return_value = False
-    
+
 #     with patch('openqr.qt.app.QMessageBox') as mock_msgbox:
 #         minimal_app.generate_qr_code()
-    
+
 #     # Should show warning
 #     mock_msgbox.warning.assert_called_once()
 #     # Should not generate QR code
@@ -712,13 +712,13 @@
 # def test_save_qr_code_cancelled(minimal_app):
 #     """Test saving QR code when dialog is cancelled."""
 #     from PIL import Image
-    
+
 #     minimal_app.qr_image = Image.new("RGB", (100, 100))
 #     minimal_app.qr_code_generator = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QFileDialog.getSaveFileName', return_value=("", "")):
 #         minimal_app.save_qr_code()
-    
+
 #     # Should not save if cancelled
 #     minimal_app.qr_code_generator.save_qr_to_file.assert_not_called()
 
@@ -727,10 +727,10 @@
 #     """Test saving QR code when no image exists."""
 #     minimal_app.qr_image = None
 #     minimal_app.qr_code_generator = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QFileDialog.getSaveFileName'):
 #         minimal_app.save_qr_code()
-    
+
 #     # Should not save if no image
 #     minimal_app.qr_code_generator.save_qr_to_file.assert_not_called()
 
@@ -739,9 +739,9 @@
 #     """Test copying QR code when no image exists."""
 #     minimal_app.qr_image = None
 #     minimal_app.qr_code_generator = MagicMock()
-    
+
 #     minimal_app.copy_qr_to_clipboard()
-    
+
 #     # Should not copy if no image
 #     minimal_app.qr_code_generator.copy_qr_code_to_clipboard.assert_not_called()
 
@@ -751,13 +751,13 @@
 #     minimal_app.allow_domains = ["example.com"]
 #     minimal_app.deny_domains = ["blocked.com"]
 #     minimal_app.save_config = MagicMock()
-    
+
 #     # Mock all the widgets that are created
 #     with patch('openqr.qt.app.QDialog') as mock_dialog_class:
 #         mock_dialog = MagicMock()
 #         mock_dialog.exec.return_value = True
 #         mock_dialog_class.return_value = mock_dialog
-        
+
 #         # Mock list widgets
 #         mock_allow_list = MagicMock()
 #         mock_deny_list = MagicMock()
@@ -769,7 +769,7 @@
 #         mock_deny_item = MagicMock()
 #         mock_deny_item.text.return_value = "blocked.com"
 #         mock_deny_list.item.return_value = mock_deny_item
-        
+
 #         with patch('openqr.qt.app.QHBoxLayout'), \
 #              patch('openqr.qt.app.QVBoxLayout'), \
 #              patch('openqr.qt.app.QLabel'), \
@@ -788,12 +788,12 @@
 # def test_open_domain_settings_dialog_cancelled(minimal_app, qapp):
 #     """Test cancelling domain settings dialog."""
 #     minimal_app.save_config = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QDialog') as mock_dialog_class:
 #         mock_dialog = MagicMock()
 #         mock_dialog.exec.return_value = False
 #         mock_dialog_class.return_value = mock_dialog
-        
+
 #         with patch('openqr.qt.app.QHBoxLayout'), \
 #              patch('openqr.qt.app.QVBoxLayout'), \
 #              patch('openqr.qt.app.QLabel'), \
@@ -816,12 +816,12 @@
 #     minimal_app.trim_history = MagicMock()
 #     minimal_app.qr_code_listener = MagicMock()
 #     minimal_app.qr_code_listener.set_prefix_suffix = MagicMock()
-    
+
 #     with patch('openqr.qt.app.QDialog') as mock_dialog_class:
 #         mock_dialog = MagicMock()
 #         mock_dialog.exec.return_value = True
 #         mock_dialog_class.return_value = mock_dialog
-        
+
 #         # Mock form widgets
 #         mock_checkbox = MagicMock()
 #         mock_checkbox.isChecked.return_value = False
@@ -833,7 +833,7 @@
 #         mock_prefix.text.return_value = "test_"
 #         mock_suffix = MagicMock()
 #         mock_suffix.text.return_value = "\\r"
-        
+
 #         with patch('openqr.qt.app.QFormLayout'), \
 #              patch('openqr.qt.app.QCheckBox', return_value=mock_checkbox), \
 #              patch('openqr.qt.app.QComboBox', return_value=mock_combo), \
@@ -862,10 +862,10 @@
 #         {"url": "https://example.com", "timestamp": "2024-01-01 00:00:00"},
 #         {"url": "https://test.com", "timestamp": "2024-01-01 00:01:00"},
 #     ]
-    
+
 #     # Call the actual refresh_history_list method
 #     minimal_app.refresh_history_list()
-    
+
 #     # Should clear and add items
 #     minimal_app.history_list.clear.assert_called_once()
 #     assert minimal_app.history_list.addItem.call_count == 2
@@ -876,9 +876,9 @@
 #     minimal_app.scan_history = []
 #     minimal_app.save_scan_history = MagicMock()
 #     minimal_app.refresh_history_list = MagicMock()
-    
+
 #     minimal_app.add_to_history("https://example.com")
-    
+
 #     assert len(minimal_app.scan_history) == 1
 #     assert minimal_app.scan_history[0]["url"] == "https://example.com"
 #     assert "timestamp" in minimal_app.scan_history[0]

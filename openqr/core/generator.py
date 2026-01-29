@@ -20,6 +20,7 @@ from openqr.utils import logger
 
 log = logger.setup_logger()
 
+
 class QRGenerator:
     """
     This class is for generating, caching, saving, and copying QR codes
@@ -41,9 +42,7 @@ class QRGenerator:
             log.debug(f"Creating cache directory: {self.temp_dir}")
             self.temp_dir.mkdir(parents=True, exist_ok=True)
         elif not self.temp_dir.is_dir():
-            raise RuntimeError(
-                f"Cache directory is not a directory: {self.temp_dir}"
-            )
+            raise RuntimeError(f"Cache directory is not a directory: {self.temp_dir}")
 
         log.info("QRCodeGenerator initialized.")
 
@@ -62,12 +61,14 @@ class QRGenerator:
         if not self.validate_url(url):
             log.warning("Invalid URL provided.")
             raise ValueError("URL is not valid")
-        
+
         try:
             safe_url = sanitize_filename(url)
             truncated_url_part = safe_url[:30]
             color_part = f"_{sanitize_filename(str(fill_color))}_{sanitize_filename(str(back_color))}"
-            url_hash = hashlib.sha256((safe_url + color_part).encode("utf-8")).hexdigest()[:16]
+            url_hash = hashlib.sha256(
+                (safe_url + color_part).encode("utf-8")
+            ).hexdigest()[:16]
             encoded_url = f"qr_{truncated_url_part}{color_part}_{url_hash}.png"
             full_path = self.temp_dir / encoded_url
         except Exception as e:
@@ -192,7 +193,7 @@ class QRGenerator:
 
         Args:
             qr_code (Image.Image): The PIL image to copy to the clipboard.
-        
+
         Raises:
             RuntimeError: If the QApplication instance is not available.
             TypeError: If the input is not a PIL Image.
