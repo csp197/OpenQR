@@ -1,9 +1,3 @@
-VERSION := $(shell git describe --tags --dirty --match "v*" 2>/dev/null | sed 's/^v//' || echo 0.0.0-dev)
-
-# ============================================================
-# Makefile for OpenQR
-# ============================================================
-
 APP_NAME = OpenQR
 ENTRY_POINT = main.py
 ICON = assets/openqr_icon.png
@@ -94,7 +88,7 @@ test: setup
 # Build
 # --------------------
 .PHONY: build
-build: setup
+build: setup version-file
 ifeq ($(OS),Windows_NT)
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
@@ -110,9 +104,28 @@ endif
 
 .PHONY: clean
 clean:
-	@echo "Deep cleaning project..."
+	@echo "cleaning..."
 	@$(CLEAN_CMD)
 
 .PHONY: freeze
 freeze: setup
 	$(UV_CMD) export --format requirements > requirements.txt
+
+# Ensure version is clean (e.g., 1.2.3 instead of v1.2.3)
+CLEAN_VERSION := $(shell echo $(VERSION) | sed 's/^v//')
+# Create comma version for Windows FixedFileInfo (e.g., 1,2,3,0)
+# We append ,0 because Windows expects 4 integers.
+VERSION_COMMA := $(shell echo $(CLEAN_VERSION) | sed 's/\./,/g'),0
+
+.PHONY: version-file
+version-file:
+	@echo "Interpolating version $(CLEAN_VERSION) into version.txt"
+ifeq ($(OS),Windows_NT)
+	@sed -e "s/\$${VERSION}/$(CLEAN_VERSION)/g" \
+	     -e "s/\$${VERSION_COMMA}/$(VERSION_COMMA)/g" \
+	     version.txt.template > version.txt
+else
+	@sed -e "s/\$${VERSION}/$(CLEAN_VERSION)/g" \
+	     -e "s/\$${VERSION_COMMA}/$(VERSION_COMMA)/g" \
+	     version.txt.template > version.txt
+endif

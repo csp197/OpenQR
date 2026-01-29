@@ -1,4 +1,5 @@
 import pytest
+
 # from pytestqt.qtbot import QtBot
 from pytestqt.exceptions import TimeoutError
 from openqr.core.listener import QRListener

@@ -1,4 +1,5 @@
 import pytest
+
 # from unittest.mock import MagicMock, patch
 from openqr.cli.listener import QRCliListener
 

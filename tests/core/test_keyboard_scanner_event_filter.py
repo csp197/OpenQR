@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from PyQt6.QtCore import QEvent, Qt, QObject
+
 # from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QKeyEvent
 from openqr.core.keyboard_scanner_event_filter import KeyboardScannerEventFilter

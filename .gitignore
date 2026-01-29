@@ -8,3 +8,5 @@ __pycache__
 *.log
 .ruff_cache
 .venv
+OpenQR.spec
+version.txt
