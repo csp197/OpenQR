@@ -6,6 +6,7 @@ from openqr.utils import logger
 
 log = logger.setup_logger()
 
+
 class QRListener(QObject):
     """
     Listens for QR code scans via Qt keyboard events and ensures
@@ -24,7 +25,9 @@ class QRListener(QObject):
         self.suffix = suffix
         self._mutex = QMutex()
 
-        log.info(f"QRListener initialized with prefix={repr(prefix)}, suffix={repr(suffix)}")
+        log.info(
+            f"QRListener initialized with prefix={repr(prefix)}, suffix={repr(suffix)}"
+        )
 
     def start_listening(self):
         """
@@ -71,24 +74,23 @@ class QRListener(QObject):
         if chunk in ("\r\n", "\n"):
             chunk = "\r"
 
-
         self._mutex.lock()
         try:
             self._scanner_keystroke_buffer += chunk
             log.debug(f"Buffer updated: {repr(self._scanner_keystroke_buffer)}")
 
             # Ensure buffer starts with prefix
-            if self.prefix and not self._scanner_keystroke_buffer.startswith(self.prefix):
+            if self.prefix and not self._scanner_keystroke_buffer.startswith(
+                self.prefix
+            ):
                 log.debug("Buffer does not match prefix. Clearing buffer.")
                 self._scanner_keystroke_buffer = ""
                 return
 
             # Normalize buffer for suffix detection
-            normalized_buffer = (
-                self._scanner_keystroke_buffer
-                .replace("\r\n", "\r")
-                .replace("\n", "\r")
-            )
+            normalized_buffer = self._scanner_keystroke_buffer.replace(
+                "\r\n", "\r"
+            ).replace("\n", "\r")
 
             if self.suffix and normalized_buffer.endswith(self.suffix):
                 self.process_scanned_data(normalized_buffer)
@@ -110,10 +112,9 @@ class QRListener(QObject):
 
         url = data
         if self.prefix:
-            url = url[len(self.prefix):]
+            url = url[len(self.prefix) :]
         if self.suffix:
-            url = url[:-len(self.suffix)]
-
+            url = url[: -len(self.suffix)]
 
         log.info(f"Prefix and suffix stripped. Emitting scanned URL: {url}")
         self.emit_url_scanned(url)
@@ -123,7 +124,6 @@ class QRListener(QObject):
         self.url_scanned.emit(url)
 
     def _install_event_filter(self):
-
         if not self._event_filter:
             self._event_filter = KeyboardScannerEventFilter(self)
             app = QApplication.instance()

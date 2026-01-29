@@ -275,60 +275,83 @@ class OpenQRApp(QMainWindow):
     def _init_ui(self):
         log.debug("Initializing UI components...")
         self.setWindowTitle("OpenQR - QR Code Scanner & Generator")
+        log.info("Window title: OpenQR - QR Code Scanner & Generator")
         self.setMinimumSize(900, 600)
-
+        log.info("Minimum size: 900x600")
         icon_path = os.path.join(os.path.dirname(__file__), "../assets/openqr_icon.png")
+        log.info("Icon path: {icon_path}")
         self.setWindowIcon(QIcon(icon_path))
+        log.info("Window icon set.")
         main_widget = QWidget()
-
+        log.info("Main widget created.")
+        log.info("Outer layout created.")
         # Outer vertical layout for the whole window
         outer_layout = QVBoxLayout()
+        log.info("Outer layout set.")
         main_widget.setLayout(outer_layout)
+        log.info("Main widget set.")
         self.setCentralWidget(main_widget)
-
+        log.info("Central widget set.")
         # Main horizontal layout for content
         main_layout = QHBoxLayout()
+        log.info("Main layout created.")
         main_layout.setContentsMargins(15, 15, 15, 15)
+        log.info("Main layout contents margins set.")
         main_layout.setSpacing(20)
+        log.info("Main layout spacing set.")
         outer_layout.addLayout(main_layout)
-
+        log.info("Main layout added to outer layout.")
         # Sidebar: Scanner controls, status, scan history, help
         sidebar_group = QGroupBox("Scanner Controls")
         sidebar_layout = QVBoxLayout()
+        log.info("Sidebar group created.")
 
         # Start/Stop Listening buttons (side by side)
         listen_btn_row = QHBoxLayout()
+        log.info("Listen button row created.")
         self.start_btn = QPushButton("Start Listening")
+        log.info("Start button created.")
         self.start_btn.setMinimumHeight(40)
+        log.info("Start button minimum height set.")
         self.start_btn.setFixedWidth(150)
+        log.info("Start button fixed width set.")
         self.start_btn.clicked.connect(self.start_listening)
+        log.info("Start button clicked connected to start listening.")
         self.stop_btn = QPushButton("Stop Listening")
+        log.info("Stop button created.")
         self.stop_btn.setMinimumHeight(40)
+        log.info("Stop button minimum height set.")
         self.stop_btn.setFixedWidth(150)
+        log.info("Stop button fixed width set.")
         self.stop_btn.clicked.connect(self.stop_listening)
+        log.info("Stop button clicked connected to stop listening.")
         listen_btn_row.addWidget(self.start_btn)
         listen_btn_row.addWidget(self.stop_btn)
         sidebar_layout.addLayout(listen_btn_row)
-
+        log.info("Listen button row added to sidebar layout.")
         # Status indicator
-        self.status_indicator = QLabel()
+        self.status_indicator = QLabel("")
+        log.info("Status indicator created.")
         self.status_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        log.info("Status indicator alignment set.")
         self.status_indicator.setStyleSheet(
             "font-size: 24px; font-weight: bold; padding: 10px;"
         )
+        log.info("Status indicator style sheet set.")
         sidebar_layout.addWidget(self.status_indicator)
-
+        log.info("Status indicator added to sidebar layout.")
         # Prefix/suffix/URL feedback
-        self.prefix_feedback = QLabel()
+        self.prefix_feedback = QLabel("")
         self.prefix_feedback.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.prefix_feedback.setStyleSheet(
             "font-size: 16px; color: #1976d2; padding: 5px;"
         )
         sidebar_layout.addWidget(self.prefix_feedback)
-
+        log.info("Prefix feedback added to sidebar layout.")
         # Scan history
         history_label = QLabel("Scan History:")
         sidebar_layout.addWidget(history_label)
+        log.info("History label added to sidebar layout.")
         self.history_list = QListWidget()
         sidebar_layout.addWidget(self.history_list)
         self.copy_url_button = QPushButton("Copy Selected URL")
@@ -363,7 +386,7 @@ class OpenQRApp(QMainWindow):
         self.generate_button.clicked.connect(self.generate_qr_code)
         generator_layout.addWidget(self.generate_button)
         generator_layout.addSpacing(10)
-        self.qr_label = QLabel()
+        self.qr_label = QLabel("")
         self.qr_label.setFixedSize(200, 200)
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr_label.setStyleSheet("border: 1px solid #888; background: #222;")
@@ -416,7 +439,7 @@ class OpenQRApp(QMainWindow):
         self.statusBar().setSizeGripEnabled(False)
         self.status_bar.showMessage("Ready")
         self.update_listen_buttons()
-        self.status_indicator()
+        self.set_status_indicator()
         log.debug("UI components created.")
 
         menu_bar = self.menuBar()
@@ -425,24 +448,32 @@ class OpenQRApp(QMainWindow):
         file_menu.addAction("Domain Management", self.open_domain_settings_dialog)
         file_menu.addAction("Help", self.show_help_dialog)
 
-    def status_indicator(self, prefix_detected=False, url=None):
+    def set_status_indicator(self, prefix_detected=False, url=None):
+        log.info("Status indicator called.")
         if self.qr_code_listener.is_listening:
+            log.info("Status indicator: Listening")
             self.status_indicator.setText("Listening")
+            log.info("Status indicator text: Listening")
             self.status_indicator.setStyleSheet(
                 "font-size: 24px; font-weight: bold; color: #388e3c; padding: 10px;"
             )
         else:
+            log.info("Status indicator: Not Listening")
             self.status_indicator.setText("Not Listening")
+            log.info("Status indicator text: Not Listening")
             self.status_indicator.setStyleSheet(
                 "font-size: 24px; font-weight: bold; color: #b71c1c; padding: 10px;"
             )
         if url:
+            log.info("Prefix feedback: URL detected")
             self.prefix_feedback.setText(f"URL detected: <a href='{url}'>{url}</a>")
             self.prefix_feedback.setOpenExternalLinks(True)
         elif prefix_detected:
+            log.info("Prefix feedback: Prefix detected")
             self.prefix_feedback.setText("Prefix detected… waiting for suffix…")
             self.prefix_feedback.setOpenExternalLinks(False)
         else:
+            log.info("Prefix feedback: No URL detected")
             self.prefix_feedback.setText("")
             self.prefix_feedback.setOpenExternalLinks(False)
 
@@ -471,7 +502,7 @@ class OpenQRApp(QMainWindow):
             self.qr_code_listener.start_listening()
             self.status_bar("Listening for QR codes...", "#388e3c")
             self.update_listen_buttons()
-            self.status_indicator()
+            self.set_status_indicator()
 
     def stop_listening(self):
         if self.qr_code_listener.is_listening:
@@ -479,7 +510,7 @@ class OpenQRApp(QMainWindow):
             self.qr_code_listener.stop_listening()
             self.status_bar("Ready", "")  # old value => #b71c1c
             self.update_listen_buttons()
-            self.status_indicator()
+            self.set_status_indicator()
 
     def update_listen_buttons(self):
         if self.qr_code_listener.is_listening:
@@ -539,7 +570,7 @@ class OpenQRApp(QMainWindow):
         # Convert PIL image to RGBA bytes
         qr_rgba = self.qr_image.convert("RGBA")
         w, h = qr_rgba.size
-        data = qr_rgba.tobytes("raw", "RGBA")
+        # data = qr_rgba.tobytes("raw", "RGBA")
         # Convert RGBA bytes to QPixmap
         buf = io.BytesIO()
         self.qr_image.save(buf, format="PNG")

@@ -1,82 +1,102 @@
-# Makefile for building and managing OpenQR
-
-# Project Settings
 APP_NAME = OpenQR
-APP_NAME_LOWERCASE = $(shell echo $(APP_NAME) | tr A-Z a-z)
 ENTRY_POINT = main.py
 ICON = assets/openqr_icon.png
-VENV = venv
 
-# Detect platform-specific paths
+VENV = .venv
+PYTHON_VERSION = 3.13
+UV_CMD = uv
+
+# export VERSION := $(shell git describe --tags --dirty --match "v*" 2>/dev/null | sed 's/^v//' || echo 0.0.0-dev)
+# export VERSION_COMMA := $(shell echo $(VERSION).0.0.0 | sed 's/[^0-9.]//g' | cut -d. -f1-4 | sed 's/\./,/g')
+
+
+HAVE_UV := $(shell command -v $(UV_CMD) 2> /dev/null)
+
 ifeq ($(OS),Windows_NT)
     PYTHON = $(VENV)/Scripts/python.exe
-    PIP = $(VENV)/Scripts/pip.exe
+    UV = $(VENV)/Scripts/uv.exe
     PYINSTALLER = $(VENV)/Scripts/pyinstaller.exe
     RUFF = $(VENV)/Scripts/ruff.exe
     PYTEST = $(VENV)/Scripts/pytest.exe
     ADD_DATA = $(ICON);assets
+    CLEAN_CMD = if exist build rmdir /s /q build && \
+                if exist dist rmdir /s /q dist && \
+                if exist $(VENV) rmdir /s /q $(VENV) && \
+                if exist .uv_cache rmdir /s /q .uv_cache && \
+                for /d /r . %%d in (__pycache__) do @if exist "%%d" rd /s /q "%%d"
 else
     PYTHON = $(VENV)/bin/python3
-    PIP = $(VENV)/bin/pip
+    UV = $(VENV)/bin/uv
     PYINSTALLER = $(VENV)/bin/pyinstaller
     RUFF = $(VENV)/bin/ruff
     PYTEST = $(VENV)/bin/pytest
     ADD_DATA = $(ICON):assets
+    CLEAN_CMD = rm -rf .pytest_cache .mypy_cache .uv_cache build dist *.spec $(VENV) version.txt && \
+                find . -type d -name "__pycache__" -exec rm -rf {} + && \
+                find . -type f -name "*.py[co]" -delete
 endif
 
-# Default target
 .PHONY: all
 all: build
 
-# Display help
-.PHONY: help
-help:
-	@echo "Usage:"
-	@echo "  make setup      - Create virtual environment and install dependencies"
-	@echo "  make run        - Run the application"
-	@echo "  make lint       - Lint code using ruff"
-	@echo "  make format     - Format code using ruff"
-	@echo "  make test       - Run unit tests"
-	@echo "  make build      - Create a standalone executable with PyInstaller"
-	@echo "  make dist       - Build and show dist location"
-	@echo "  make clean      - Remove temp files, caches, and build artifacts"
-	@echo "  make freeze     - Export requirements.txt"
-	@echo "  make rebuild    - Clean and rebuild"
 
-# Create virtual environment and install dependencies
+# --------------------
+# Setup & Maintenance
+# --------------------
+.PHONY: install-uv
+install-uv:
+ifndef HAVE_UV
+	@echo "uv not found. Installing..."
+ifeq ($(OS),Windows_NT)
+	@powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+else
+	@curl -LsSf https://astral.sh/uv/install.sh | sh
+endif
+else
+	@echo "uv already installed"
+endif
+
 .PHONY: setup
-setup:
-	python -m venv $(VENV)
-	$(PYTHON) -m pip install --upgrade pip
-	$(PYTHON) -m pip install -r requirements.txt
+setup: install-uv
+	@$(UV_CMD) python install $(PYTHON_VERSION)
+	@test -d $(VENV) || $(UV_CMD) venv --python $(PYTHON_VERSION) $(VENV)
+	$(UV_CMD) sync --frozen
 
-# Run the app using the virtual environment
+.PHONY: doctor
+doctor:
+	@$(UV_CMD) --version
+	@$(PYTHON) --version
+	@test -f pyproject.toml || (echo "pyproject.toml missing" && exit 1)
+	@echo "Environment looks good."
+
+# --------------------
+# Development
+# --------------------
 .PHONY: run
-run:
+run: setup
 	$(PYTHON) $(ENTRY_POINT)
 
-# Lint source code
 .PHONY: lint
-lint:
+lint: setup
 	$(RUFF) check .
 
-# Format source code
 .PHONY: format
-format:
+format: setup
 	$(RUFF) format .
 
-# Run tests
 .PHONY: test
-test:
+test: setup
 	$(PYTEST) tests/
 
-# Build the app using PyInstaller
+# --------------------
+# Build
+# --------------------
 .PHONY: build
-build:
+build: setup
 ifeq ($(OS),Windows_NT)
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
-		--icon=assets/openqr_icon.png \
+		--icon=$(ICON) \
 		--add-data "$(ADD_DATA)" \
 		--version-file version.txt
 else
@@ -86,25 +106,21 @@ else
 		--add-data "$(ADD_DATA)"
 endif
 
-# Show build result
-.PHONY: dist
-dist: build
-	@echo "✅ Executable available at: ./dist/$(APP_NAME)"
-
-# Clean all temp files and caches
 .PHONY: clean
 clean:
-	@echo "🧹 Cleaning up..."
-	@find . -type f -name '*.pyc' -delete || del /s *.pyc 2>nul
-	@find . -type d -name '__pycache__' -exec rm -r {} + || rmdir /s /q __pycache__ 2>nul
-	@rm -rf .pytest_cache .mypy_cache build dist *.spec || \
-		del /s /q .pytest_cache .mypy_cache build dist *.spec 2>nul
+	@echo "cleaning..."
+	@$(CLEAN_CMD)
 
-# Freeze dependencies
 .PHONY: freeze
-freeze:
-	$(PYTHON) -m pip freeze > requirements.txt
+freeze: setup
+	$(UV_CMD) export --format requirements > requirements.txt
 
-# Clean and rebuild
-.PHONY: rebuild
-rebuild: clean build
+
+# .PHONY: version-file
+# version-file:
+# 	@echo "Generating version.txt (String: $(VERSION) | Binary: $(VERSION_COMMA))"
+# 	@$(PYTHON) -c "import os; \
+# 		t = open('version.txt.template').read(); \
+# 		t = t.replace('$${VERSION_COMMA}', os.environ['VERSION_COMMA']); \
+# 		t = t.replace('$${VERSION}', os.environ['VERSION']); \
+# 		open('version.txt', 'w').write(t)"

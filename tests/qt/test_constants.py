@@ -1,4 +1,4 @@
-import pytest
+# import pytest
 from openqr.qt.constants import HELP_MESSAGE
 
 
@@ -29,4 +29,7 @@ def test_help_message_contains_features():
     """Test that HELP_MESSAGE mentions key features."""
     help_lower = HELP_MESSAGE.lower()
     # Check for mentions of key features
-    assert any(keyword in help_lower for keyword in ["prefix", "suffix", "domain", "logo", "history"])
+    assert any(
+        keyword in help_lower
+        for keyword in ["prefix", "suffix", "domain", "logo", "history"]
+    )

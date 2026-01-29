@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import MagicMock, patch
+
+# from unittest.mock import MagicMock, patch
 from openqr.cli.listener import QRCliListener
 
 
@@ -44,7 +45,7 @@ def test_cli_listener_set_prefix_suffix(cli_listener):
     """Test setting prefix and suffix."""
     assert cli_listener.prefix == "qr_"
     assert cli_listener.suffix == "\r"
-    
+
     cli_listener.set_prefix_suffix("prefix_", "suffix")
     assert cli_listener.prefix == "prefix_"
     assert cli_listener.suffix == "suffix"
@@ -69,13 +70,13 @@ def test_cli_listener_multiple_start_stop_cycles(cli_listener):
     """Test multiple start/stop cycles."""
     cli_listener.start_listening()
     assert cli_listener.is_listening is True
-    
+
     cli_listener.stop_listening()
     assert cli_listener.is_listening is False
-    
+
     cli_listener.start_listening()
     assert cli_listener.is_listening is True
-    
+
     cli_listener.stop_listening()
     assert cli_listener.is_listening is False
 
@@ -84,7 +85,7 @@ def test_cli_listener_start_when_already_started(cli_listener):
     """Test starting when already started."""
     cli_listener.start_listening()
     assert cli_listener.is_listening is True
-    
+
     # Should not crash when starting twice
     cli_listener.start_listening()
     assert cli_listener.is_listening is True

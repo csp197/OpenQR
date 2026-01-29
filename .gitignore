@@ -6,3 +6,8 @@ build
 dist
 __pycache__
 *.log
+.ruff_cache
+.venv
+OpenQR.spec
+# version.txt
+version.txt.template
