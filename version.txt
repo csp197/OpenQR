@@ -1,8 +1,8 @@
 # UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(${VERSION}),
-    prodvers=(${VERSION}),
+    filevers=(0),
+    prodvers=(0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,12 +18,12 @@ VSVersionInfo(
           [
             StringStruct("CompanyName", "CSP"),
             StringStruct("FileDescription", "OpenQR Desktop Application"),
-            StringStruct("FileVersion", "${VERSION}"),
+            StringStruct("FileVersion", "1.0.0.1"),
             StringStruct("InternalName", "OpenQR"),
             StringStruct("LegalCopyright", "Copyright (c) 2026"),
             StringStruct("OriginalFilename", "OpenQR.exe"),
             StringStruct("ProductName", "OpenQR"),
-            StringStruct("ProductVersion", "${VERSION}")
+            StringStruct("ProductVersion", "1.0.0.1")
           ]
         )
       ]

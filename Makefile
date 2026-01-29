@@ -6,6 +6,10 @@ VENV = .venv
 PYTHON_VERSION = 3.13
 UV_CMD = uv
 
+# export VERSION := $(shell git describe --tags --dirty --match "v*" 2>/dev/null | sed 's/^v//' || echo 0.0.0-dev)
+# export VERSION_COMMA := $(shell echo $(VERSION).0.0.0 | sed 's/[^0-9.]//g' | cut -d. -f1-4 | sed 's/\./,/g')
+
+
 HAVE_UV := $(shell command -v $(UV_CMD) 2> /dev/null)
 
 ifeq ($(OS),Windows_NT)
@@ -88,7 +92,7 @@ test: setup
 # Build
 # --------------------
 .PHONY: build
-build: setup version-file
+build: setup
 ifeq ($(OS),Windows_NT)
 	$(PYINSTALLER) --noconfirm --onefile --windowed $(ENTRY_POINT) \
 		--name $(APP_NAME) \
@@ -111,18 +115,12 @@ clean:
 freeze: setup
 	$(UV_CMD) export --format requirements > requirements.txt
 
-# Ensure version is clean (e.g., 1.2.3 instead of v1.2.3)
-CLEAN_VERSION := $(shell echo $(VERSION) | sed 's/^v//')
 
-.PHONY: version-file
-version-file:
-	@echo "Interpolating version $(CLEAN_VERSION) into version.txt"
-ifeq ($(OS),Windows_NT)
-	@sed -e "s/\$${VERSION}/$(CLEAN_VERSION)/g" \
-	     -e "s/\$${VERSION}/$(VERSION)/g" \
-	     version.txt.template > version.txt
-else
-	@sed -e "s/\$${VERSION}/$(CLEAN_VERSION)/g" \
-	     -e "s/\$${VERSION}/$(VERSION)/g" \
-	     version.txt.template > version.txt
-endif
+# .PHONY: version-file
+# version-file:
+# 	@echo "Generating version.txt (String: $(VERSION) | Binary: $(VERSION_COMMA))"
+# 	@$(PYTHON) -c "import os; \
+# 		t = open('version.txt.template').read(); \
+# 		t = t.replace('$${VERSION_COMMA}', os.environ['VERSION_COMMA']); \
+# 		t = t.replace('$${VERSION}', os.environ['VERSION']); \
+# 		open('version.txt', 'w').write(t)"
