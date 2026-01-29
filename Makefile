@@ -113,8 +113,6 @@ freeze: setup
 
 # Ensure version is clean (e.g., 1.2.3 instead of v1.2.3)
 CLEAN_VERSION := $(shell echo $(VERSION) | sed 's/^v//')
-# Create comma version for Windows FixedFileInfo (e.g., 1,2,3,0)
-# VERSION_COMMA := $(shell echo $(CLEAN_VERSION) | sed 's/\./,/g'),0
 
 .PHONY: version-file
 version-file:

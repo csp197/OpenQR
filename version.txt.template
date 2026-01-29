@@ -1,8 +1,8 @@
 # UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(${VERSION_COMMA}),
-    prodvers=(${VERSION_COMMA}),
+    filevers=(${VERSION}),
+    prodvers=(${VERSION}),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
