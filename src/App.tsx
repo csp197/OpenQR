@@ -13,11 +13,10 @@ function App() {
   const [] = useState("");
 
   return (
-    <div>
-    <Header />
-    <Reader />
-    <Generator />
-    <Footer />
+    <div className="flex flex-col h-screen bg-zinc-50 dark:bg-[#1a1a1a] text-zinc-900 dark:text-zinc-200 font-sans transition-colors duration-300">
+      <Header />
+      <main className="flex-1 overflow-hidden"></main>
+      <Footer />
     </div>
   );
 }

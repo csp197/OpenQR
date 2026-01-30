@@ -1,9 +1,9 @@
 const Footer = () => {
-    return (
-        <div>
-            <h1>Footer</h1>
-        </div>
-    );
-}
+  return (
+    <footer className="h-10 border-t bg-zinc-50 flex items-center px-4 text-xs text-zinc-500">
+      Status: Ready
+    </footer>
+  );
+};
 
-export default Footer
+export default Footer;
