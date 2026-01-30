@@ -6,6 +6,7 @@ import Header from "./components/Header";
 import Scanner from "./components/Scanner";
 import Generator from "./components/Generator";
 import Footer from "./components/Footer";
+import "./App.css";
 
 function App() {
   const [activeTab, setActiveTab] = useState("scanner");
