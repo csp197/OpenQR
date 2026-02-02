@@ -11,8 +11,14 @@ import "./App.css";
 function App() {
   const [activeTab, setActiveTab] = useState("scanner");
   const [isDark, setIsDark] = useState(true);
-  const [url, setUrl] = useState("https://github.com");
+  const [url, setUrl] = useState("https://google.com");
+  const [status, setStatus] = useState("Ready");
   const [isListening, setIsListening] = useState(true);
+
+  const triggerStatus = (msg: string) => {
+    setStatus(msg);
+    setTimeout(() => setStatus("Ready"), 3000);
+  };
 
   return (
     <div
@@ -35,11 +41,10 @@ function App() {
               setQrCode={() => {}}
             />
           ) : (
-            <Generator url={url} setUrl={setUrl} />
+            <Generator url={url} setUrl={setUrl} setStatus={triggerStatus} />
           )}
         </main>
-
-        <Footer />
+        <Footer status={status} />
       </div>
     </div>
   );
