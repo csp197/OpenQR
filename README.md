@@ -21,4 +21,11 @@ Local Development:
   - Run in development mode: `bun run tauri dev`
   - Build application: `bun tauri build --bundles app`
 
+  ```
+  To create a release, all changes must be merged to `main` and a tag must be applied to the commit.
+  
+  git tag v1.0.0
+  git push origin v1.0.0
+  ```
+
  <a target="_blank" href="https://icons8.com/icon/WDy6fnNnJEm0/qr-code">QR Code</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a>

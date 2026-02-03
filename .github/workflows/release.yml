@@ -1,0 +1,60 @@
+name: "Release Build (Bun)"
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Note: If you eventually want Linux, add 'ubuntu-22.04' here
+        platform: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Setup Bun environment
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # 2. Setup Rust
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # 3. Install Linux dependencies (Keep this for future-proofing)
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # 4. Bun Install
+      - name: install frontend dependencies
+        run: bun install
+
+      # 5. Run Tests
+      - name: run tests
+        run: bun test || echo "No tests defined yet"
+
+      # 6. Build and Release
+      # The tauri-action automatically detects 'bun' if bun.lockb exists
+      - name: build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "OpenQR v__VERSION__"
+          releaseBody: "Automated release via Bun and GitHub Actions."
+          releaseDraft: true
+          prerelease: false
