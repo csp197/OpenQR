@@ -10,7 +10,7 @@ const Footer = ({ status }: FooterProps) => {
           className={`w-2 h-2 rounded-full ${status === "Ready" ? "bg-green-500" : "bg-blue-500 animate-pulse"}`}
         />
         <span className="font-medium tracking-tight">
-          Status:{" "}
+          {" "}
           <span
             className={
               status !== "Ready" ? "text-blue-600 dark:text-blue-400" : ""
