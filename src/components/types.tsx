@@ -1,6 +1,12 @@
-type State =
-  | { status: "IDLE" } // Scanner tab, waiting
-  | { status: "LISTENING" } // Scanner tab, active
-  | { status: "PROCESSING"; code: string } // Scanner tab, working
-  | { status: "ERROR"; message: string } // Scanner tab, error
-  | { status: "GENERATING"; feedback?: string }; // Generator tab (optional feedback msg)
+type AppState =
+  | { status: "IDLE" }
+  | { status: "LISTENING" }
+  | { status: "PROCESSING"; code: string }
+  | { status: "ERROR"; message: string }
+  | { status: "GENERATING"; feedback?: string };
+
+type ScanObject = {
+  id: string;
+  url: string;
+  timestamp: string;
+};

@@ -1,23 +1,15 @@
-import {
-  // React,
-  useState,
-  useRef,
-} from "react";
+import { useState, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import {
-  // Download,
-  // Palette,
-  Image as ImageIcon,
-  Copy,
-  // Check,
-} from "lucide-react";
+import { Image as ImageIcon, Copy, Download } from "lucide-react";
 import { Image } from "@tauri-apps/api/image";
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 
 interface GeneratorProps {
   url: string;
   setUrl: (val: string) => void;
-  setStatus: (msg: string) => void; // New prop for the footer
+  setStatus: (msg: string) => void;
 }
 
 const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
@@ -44,36 +36,76 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
     }
   };
 
-  // 2. Copy Fix: Enhanced for Tauri/Webview
   const copyToClipboard = async () => {
-    const canvas = qrRef.current?.querySelector("canvas");
-    if (!canvas) return;
+    const borderedCanvas = getBorderedCanvas();
+    if (!borderedCanvas) return;
 
     try {
       setStatus("Encoding...");
-
-      // 1. Convert canvas to a Blob (PNG format)
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/png"),
+        borderedCanvas.toBlob((b) => resolve(b), "image/png"),
       );
+      if (!blob) throw new Error("Blob failed");
 
-      if (!blob) throw new Error("Failed to create blob");
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const tauriImage = await Image.fromBytes(bytes);
+      await writeImage(tauriImage);
 
-      // 2. Convert Blob to Uint8Array (this now contains PNG headers)
+      setStatus("Copied to clipboard!");
+    } catch (err) {
+      setStatus("Copy failed");
+    }
+  };
+
+  const getBorderedCanvas = () => {
+    const canvas = qrRef.current?.querySelector("canvas");
+    if (!canvas) return null;
+
+    const padding = 48;
+    const offscreenCanvas = document.createElement("canvas");
+    offscreenCanvas.width = canvas.width + padding;
+    offscreenCanvas.height = canvas.height + padding;
+
+    const ctx = offscreenCanvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+    ctx.drawImage(canvas, padding / 2, padding / 2);
+
+    return offscreenCanvas;
+  };
+
+  const downloadImage = async () => {
+    const borderedCanvas = getBorderedCanvas();
+    if (!borderedCanvas) return;
+
+    try {
+      const filePath = await save({
+        filters: [{ name: "Image", extensions: ["png"] }],
+        defaultPath: `${new URL(url).host}_qrcode.png`,
+      });
+
+      if (!filePath) return; // User cancelled
+
+      setStatus("Saving...");
+
+      // 2. Convert canvas to bytes
+      const blob = await new Promise<Blob | null>((resolve) =>
+        borderedCanvas.toBlob((b) => resolve(b), "image/png"),
+      );
+      if (!blob) throw new Error("Blob creation failed");
+
       const arrayBuffer = await blob.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
 
-      // 3. Use Image.fromBytes instead of fromRgbaBytes
-      // This method allows Rust to see the PNG headers and identify the format
-      const tauriImage = await Image.fromBytes(bytes);
+      // 3. Write file to disk using Tauri FS
+      await writeFile(filePath, bytes);
 
-      // 4. Write to clipboard
-      await writeImage(tauriImage);
-
-      setStatus("✓ Copied to clipboard!");
+      setStatus(`Downloaded to ${filePath}!`);
     } catch (err) {
-      console.error("Native copy failed:", err);
-      setStatus("Copy failed: Format error");
+      console.error("Download failed:", err);
+      setStatus("Download failed");
     }
   };
 
@@ -99,7 +131,7 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
       <div className="relative flex justify-center py-4">
         <div
           ref={qrRef}
-          className="bg-white p-6 rounded-[2rem] shadow-xl border border-slate-100"
+          className="bg-white p-6 rounded-4xl shadow-xl border border-slate-100"
         >
           {url ? (
             <QRCodeCanvas
@@ -114,19 +146,29 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
               }
             />
           ) : (
-            <div className="w-[180px] h-[180px] border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 text-xs">
+            <div className="w-45 h-45 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 text-xs">
               Ready...
             </div>
           )}
         </div>
 
         {url && (
-          <button
-            onClick={copyToClipboard}
-            className="absolute bottom-6 right-1/2 translate-x-28 p-2 bg-white rounded-full shadow-md hover:bg-slate-50 border border-slate-100"
-          >
-            <Copy size={16} className="text-slate-600" />
-          </button>
+          <div className="absolute bottom-6 flex gap-2 translate-x-1/2 right-1/2 ml-28">
+            <button
+              onClick={copyToClipboard}
+              title="Copy to Clipboard"
+              className="p-2 bg-white rounded-full shadow-md hover:bg-slate-50 border border-slate-100 transition-transform active:scale-95"
+            >
+              <Copy size={16} className="text-slate-600" />
+            </button>
+            <button
+              onClick={downloadImage}
+              title="Download PNG"
+              className="p-2 bg-white rounded-full shadow-md hover:bg-slate-50 border border-slate-100 transition-transform active:scale-95"
+            >
+              <Download size={16} className="text-blue-600" />
+            </button>
+          </div>
         )}
       </div>
 
