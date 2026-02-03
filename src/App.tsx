@@ -21,7 +21,7 @@ function App() {
   const [mode, setMode] = useState<AppState>({ status: "IDLE" });
   const [isDark, setIsDark] = useState(true);
   const [url, setUrl] = useState("https://google.com");
-  const [qrCode, setQrCode] = useState<string | null>(null);
+  // const [qrCode, setQrCode] = useState<string | null>(null);
   const [history, setHistory] = useState<ScanObject[]>([]);
   const buffer = useRef("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);

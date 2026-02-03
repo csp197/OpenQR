@@ -1,4 +1,3 @@
-use url::Url;
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn check_domain(
@@ -11,7 +10,6 @@ fn check_domain(
     } else {
         url.clone()
     };
-
     let parsed = url::Url::parse(&full_url).map_err(|_| "Invalid URL format".to_string())?;
     let domain = parsed
         .domain()
