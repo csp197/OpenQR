@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "openqr",
+        "title": "OpenQR",
         "width": 800,
-        "height": 800
+        "height": 700
       }
     ],
     "security": {
