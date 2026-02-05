@@ -11,7 +11,7 @@ Features:
  - Branding: Support for "Logo Excavation" so you can place your brand in the center of the code without breaking scannability.
  - Copy to Clipboard: Automatically adds a professional white "quiet zone" border for better pasting into documents.
  - Native Download: Export as PNG directly to your file system using native OS dialogs.
- - Domain Control: Integrated Whitelist and Blacklist management.
+ - Domain Control: Integrated Allowlist and Blocklist management.
  - Tauri Store: All settings (security lists, app preferences) are persisted to a local JSON file in your OS application data folder.
  - Local History: Keep track of recent scans during your session with quick-copy actions.
 

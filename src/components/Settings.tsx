@@ -1,25 +1,61 @@
-import { X, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { X, Trash2, FolderOpen } from "lucide-react";
+import { useState, useEffect } from "react";
+import { homeDir, join } from "@tauri-apps/api/path";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { toast } from "sonner";
 
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
-  config: { whitelist: string[]; blacklist: string[] };
-  onSave: (newConfig: { whitelist: string[]; blacklist: string[] }) => void;
+  config: { allowlist: string[]; blocklist: string[] };
+  onSave: (newConfig: { allowlist: string[]; blocklist: string[] }) => void;
 }
 
 const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
-  const [whitelist, setWhitelist] = useState(config.whitelist);
-  const [blacklist, setBlacklist] = useState(config.blacklist);
+  const [allowlist, setAllowlist] = useState(config.allowlist);
+  const [blocklist, setBlocklist] = useState(config.blocklist);
   const [newItem, setNewItem] = useState("");
+
+  useEffect(() => {
+    setAllowlist(config.allowlist);
+    setBlocklist(config.blocklist);
+  }, [config, isOpen]);
 
   if (!isOpen) return null;
 
-  const addItem = (type: "white" | "black") => {
-    if (!newItem) return;
-    if (type === "white") setWhitelist([...whitelist, newItem]);
-    else setBlacklist([...blacklist, newItem]);
+  const addItem = (type: "allow" | "block") => {
+    const domain = newItem.trim().toLowerCase();
+
+    if (!domain) return;
+
+    const existsInAllow = allowlist.includes(domain);
+    const existsInBlock = blocklist.includes(domain);
+
+    if (existsInAllow || existsInBlock) {
+      const listName = existsInAllow ? "Allowlist" : "Blocklist";
+      toast.error(`"${domain}" is already in the ${listName}`);
+      return;
+    }
+
+    if (type === "allow") {
+      setAllowlist((prev) => [...prev, domain]);
+    } else {
+      setBlocklist((prev) => [...prev, domain]);
+    }
     setNewItem("");
+  };
+
+  const openSettingsFolder = async () => {
+    try {
+      const home = await homeDir();
+      console.log(`home => ${home}`);
+      const folderPath = await join(home, ".openqr");
+      console.log(`folderPath => ${folderPath}`);
+      await openPath(folderPath);
+    } catch (err) {
+      console.log(err);
+      toast.error("Could not open folder. It might not exist yet.");
+    }
   };
 
   return (
@@ -45,14 +81,14 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
               className="flex-1 bg-zinc-100 dark:bg-zinc-900 p-2 rounded-xl text-sm outline-none border border-transparent focus:border-blue-500"
             />
             <button
-              onClick={() => addItem("white")}
-              className="p-2 bg-green-600 text-white rounded-xl text-xs font-bold"
+              onClick={() => addItem("allow")}
+              className="px-3 py-2 bg-green-600 text-white rounded-xl text-xs font-bold"
             >
               Allow
             </button>
             <button
-              onClick={() => addItem("black")}
-              className="p-2 bg-red-600 text-white rounded-xl text-xs font-bold"
+              onClick={() => addItem("block")}
+              className="px-3 py-2 bg-red-600 text-white rounded-xl text-xs font-bold"
             >
               Block
             </button>
@@ -61,28 +97,36 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
           <div className="grid grid-cols-2 gap-4">
             <ListSection
               title="Allowlist"
-              items={whitelist}
-              setItems={setWhitelist}
+              items={allowlist}
+              setItems={setAllowlist}
               color="text-green-500"
             />
             <ListSection
               title="Blocklist"
-              items={blacklist}
-              setItems={setBlacklist}
+              items={blocklist}
+              setItems={setBlocklist}
               color="text-red-500"
             />
           </div>
         </div>
 
-        <div className="p-6 bg-zinc-50 dark:bg-black/20 flex gap-3">
+        <div className="p-6 bg-zinc-50 dark:bg-black/20 space-y-3">
           <button
             onClick={() => {
-              onSave({ whitelist, blacklist });
+              onSave({ allowlist, blocklist });
               onClose();
             }}
-            className="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-500 transition-colors"
+            className="w-full py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-500 transition-colors"
           >
             Save Changes
+          </button>
+
+          <button
+            onClick={openSettingsFolder}
+            className="w-full py-2 flex items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 text-xs transition-colors"
+          >
+            <FolderOpen size={14} />
+            Open settings file
           </button>
         </div>
       </div>

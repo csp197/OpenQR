@@ -1,11 +1,14 @@
-import { Copy, Trash2, Loader2, ExternalLink } from "lucide-react";
+import { Copy, Trash2, Loader2, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
+
 interface ScannerProps {
   isListening: boolean;
   setIsListening: (val: boolean) => void;
   status: string;
   history: { id: string; url: string; timestamp: string }[];
   onClear: () => void;
+  mode: { status: string; url?: string };
+  onStop: () => void;
 }
 
 const Scanner = ({
@@ -14,8 +17,11 @@ const Scanner = ({
   status,
   history,
   onClear,
+  mode,
+  onStop,
 }: ScannerProps) => {
-  const isProcessing = status.includes("Processing");
+  const isProcessing = mode.status === "PROCESSING";
+  const isPending = mode.status === "PENDING_REDIRECT";
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -29,39 +35,94 @@ const Scanner = ({
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="bg-white dark:bg-[#252525] border border-zinc-200 dark:border-white/5 rounded-2xl p-8 flex flex-col items-center shadow-lg">
+      <div
+        className={`bg-white dark:bg-[#252525] border transition-colors duration-500 rounded-2xl p-8 flex flex-col items-center shadow-lg
+        ${
+          isPending
+            ? "border-blue-500/50 dark:border-blue-500/30 shadow-blue-500/10"
+            : "border-zinc-200 dark:border-white/5"
+        }`}
+      >
+        {/* Status Indicator / Icon */}
         <div
-          className={`w-3 h-3 rounded-full mb-4 transition-colors ${
-            isProcessing
-              ? "bg-yellow-500 animate-pulse"
-              : isListening
-                ? "bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.4)]"
-                : "bg-zinc-400"
+          className={`w-4 h-4 rounded-full mb-4 transition-all duration-500 flex items-center justify-center ${
+            isPending
+              ? "bg-blue-500 scale-150 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+              : isProcessing
+                ? "bg-yellow-500 animate-pulse"
+                : isListening
+                  ? "bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.4)]"
+                  : "bg-zinc-400"
           }`}
-        />
-        <h2 className="text-4xl font-black tracking-tight mb-2 dark:text-white text-center">
-          {isProcessing
-            ? "Checking..."
-            : isListening
-              ? "Listening..."
-              : "Paused"}
-        </h2>
-        <p className="text-zinc-500 text-sm mb-6 text-center max-w-xs">
-          {status}
-        </p>
-        <button
-          disabled={isProcessing}
-          onClick={() => setIsListening(!isListening)}
-          className={`px-8 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2 ${
-            isListening
-              ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white hover:bg-zinc-200"
-              : "bg-blue-600 text-white hover:bg-blue-500"
-          } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
         >
-          {isProcessing && <Loader2 size={16} className="animate-spin" />}
-          {isListening ? "Stop Listening" : "Start Listening"}
-        </button>
+          {/* Show a tiny spinner inside the dot if pending */}
+          {isPending && (
+            <Loader2 className="w-2.5 h-2.5 text-white animate-spin" />
+          )}
+        </div>
+
+        {/* Main Status Text */}
+        <h2 className="text-4xl font-black tracking-tight mb-2 dark:text-white text-center transition-all">
+          {isPending
+            ? "Opening..."
+            : isProcessing
+              ? "Checking..."
+              : isListening
+                ? "Listening..."
+                : "Paused"}
+        </h2>
+
+        {/* Subtext / URL Display */}
+        <p
+          className={`text-sm mb-8 text-center max-w-xs transition-colors font-mono
+          ${
+            isPending
+              ? "text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full truncate w-full"
+              : "text-zinc-500"
+          }`}
+        >
+          {isPending ? mode.url : status}
+        </p>
+
+        {/* Action Buttons Area */}
+        <div className="flex gap-3 w-full justify-center">
+          {isPending ? (
+            <>
+              {/* Cancel Button */}
+              <button
+                onClick={onStop}
+                className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-full text-sm font-bold flex items-center gap-2 transition-all"
+              >
+                <X size={16} /> Cancel
+              </button>
+
+              {/* Copy Pending URL Button */}
+              <button
+                onClick={() => mode.url && copyToClipboard(mode.url)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20"
+              >
+                <Copy size={16} /> Copy Link
+              </button>
+            </>
+          ) : (
+            /* Normal Listening Toggle */
+            <button
+              disabled={isProcessing}
+              onClick={() => setIsListening(!isListening)}
+              className={`px-8 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
+                isListening
+                  ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  : "bg-zinc-900 dark:bg-white text-white dark:text-black hover:scale-105"
+              } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              {isProcessing && <Loader2 size={16} className="animate-spin" />}
+              {isListening ? "Stop Listening" : "Start Listening"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* History List */}
       <div className="space-y-3">
         <div className="flex justify-between items-center px-1">
           <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">
