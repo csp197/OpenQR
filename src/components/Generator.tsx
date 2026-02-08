@@ -5,18 +5,20 @@ import { Image } from "@tauri-apps/api/image";
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
+import { toast } from "sonner";
 
 interface GeneratorProps {
   url: string;
   setUrl: (val: string) => void;
-  setStatus: (msg: string) => void;
 }
 
-const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
+const Generator = ({ url, setUrl }: GeneratorProps) => {
   const [fgColor, setFgColor] = useState("#000000");
+  const [bgColor, setBgColor] = useState("#ffffff");
   const [logo, setLogo] = useState<string | undefined>(undefined);
   const qrRef = useRef<HTMLDivElement>(null);
-  const colorInputRef = useRef<HTMLInputElement>(null);
+  const fgColorInputRef = useRef<HTMLInputElement>(null);
+  const bgColorInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isValidUrl = (string: string) => {
@@ -28,32 +30,21 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
     }
   };
 
-  // 1. Color Fix: Programmatically trigger the color picker
-  const handleColorClick = () => {
-    if (colorInputRef.current) {
-      colorInputRef.current.focus();
-      colorInputRef.current.click();
-    }
-  };
-
   const copyToClipboard = async () => {
     const borderedCanvas = getBorderedCanvas();
     if (!borderedCanvas) return;
 
     try {
-      setStatus("Encoding...");
       const blob = await new Promise<Blob | null>((resolve) =>
         borderedCanvas.toBlob((b) => resolve(b), "image/png"),
       );
       if (!blob) throw new Error("Blob failed");
-
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const tauriImage = await Image.fromBytes(bytes);
       await writeImage(tauriImage);
-
-      setStatus("Copied to clipboard!");
+      toast.success("Copied to clipboard!");
     } catch (err) {
-      setStatus("Copy failed");
+      toast.error("Copy failed");
     }
   };
 
@@ -61,7 +52,7 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
     const canvas = qrRef.current?.querySelector("canvas");
     if (!canvas) return null;
 
-    const padding = 48;
+    const padding = canvas.width * 0.08;
     const offscreenCanvas = document.createElement("canvas");
     offscreenCanvas.width = canvas.width + padding;
     offscreenCanvas.height = canvas.height + padding;
@@ -69,7 +60,7 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
     const ctx = offscreenCanvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
     ctx.drawImage(canvas, padding / 2, padding / 2);
 
@@ -87,10 +78,6 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
       });
 
       if (!filePath) return; // User cancelled
-
-      setStatus("Saving...");
-
-      // 2. Convert canvas to bytes
       const blob = await new Promise<Blob | null>((resolve) =>
         borderedCanvas.toBlob((b) => resolve(b), "image/png"),
       );
@@ -98,14 +85,11 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
 
       const arrayBuffer = await blob.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
-
-      // 3. Write file to disk using Tauri FS
       await writeFile(filePath, bytes);
-
-      setStatus(`Downloaded to ${filePath}!`);
+      toast.success(`Downloaded to ${filePath}!`);
     } catch (err) {
       console.error("Download failed:", err);
-      setStatus("Download failed");
+      toast.error("Download failed");
     }
   };
 
@@ -131,13 +115,14 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
       <div className="relative flex justify-center py-4">
         <div
           ref={qrRef}
-          className="bg-white p-6 rounded-4xl shadow-xl border border-slate-100"
+          className="bg-white p-5 rounded-4xl shadow-xl border border-slate-100"
         >
           {url ? (
             <QRCodeCanvas
               value={url}
               size={180}
               fgColor={fgColor}
+              bgColor={bgColor}
               level="H"
               imageSettings={
                 logo
@@ -176,31 +161,63 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
         {/* Style/Color Button */}
         <div className="relative">
           <button
-            onClick={handleColorClick}
-            className="w-full flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl text-xs font-semibold"
+            onClick={() => fgColorInputRef.current?.click()}
+            className="w-full flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border rounded-2xl text-xs font-semibold"
           >
             <div
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: fgColor }}
             />
-            Styles
+            Foreground
           </button>
           <input
             type="color"
-            ref={colorInputRef}
+            ref={fgColorInputRef}
             value={fgColor}
             onChange={(e) => setFgColor(e.target.value)}
-            className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+            className="absolute inset-0 opacity-0 pointer-events-none"
+          />
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => bgColorInputRef.current?.click()}
+            className="w-full flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border rounded-2xl text-xs font-semibold"
+          >
+            <div
+              className="w-3 h-3 rounded-full border"
+              style={{ backgroundColor: bgColor }}
+            />
+            Background
+          </button>
+          <input
+            type="color"
+            ref={bgColorInputRef}
+            value={bgColor}
+            onChange={(e) => setBgColor(e.target.value)}
+            className="absolute inset-0 opacity-0 pointer-events-none"
           />
         </div>
 
         <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl text-xs font-semibold"
+          onClick={() => {
+            fileInputRef.current?.click();
+          }}
+          className="w-full flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border rounded-2xl text-xs font-semibold"
         >
           <ImageIcon size={14} className="text-purple-500" />
-          Logo
+          Upload Logo
         </button>
+
+        <button
+          onClick={() => {
+            setLogo(undefined);
+            toast.success("Logo removed");
+          }}
+          className="flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold"
+        >
+          Remove Logo
+        </button>
+
         <input
           type="file"
           ref={fileInputRef}
@@ -212,7 +229,7 @@ const Generator = ({ url, setUrl, setStatus }: GeneratorProps) => {
               const reader = new FileReader();
               reader.onloadend = () => setLogo(reader.result as string);
               reader.readAsDataURL(file);
-              setStatus("Logo added!");
+              toast.success("Logo added!");
             }
           }}
         />

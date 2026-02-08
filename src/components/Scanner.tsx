@@ -1,5 +1,6 @@
 import { Copy, Trash2, Loader2, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface ScannerProps {
   isListening: boolean;
@@ -174,7 +175,7 @@ const Scanner = ({
                     <Copy size={14} />
                   </button>
                   <button
-                    onClick={() => window.open(item.url, "_blank")}
+                    onClick={() => openUrl(item.url)}
                     className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md text-zinc-500"
                     title="Open in Browser"
                   >

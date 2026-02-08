@@ -9,7 +9,11 @@
     "opener:allow-open-path",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$HOME/.openqr" }]
+      "allow": [
+        {
+          "path": "$HOME/.openqr"
+        }
+      ]
     },
     "clipboard-manager:default",
     "clipboard-manager:allow-write-image",
@@ -26,15 +30,29 @@
     "fs:allow-home-write-recursive",
     {
       "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$HOME/.openqr" }]
+      "allow": [
+        {
+          "path": "$HOME/.openqr"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
-      "allow": [{ "path": "$HOME/.openqr" }]
+      "allow": [
+        {
+          "path": "$HOME/.openqr"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-home-write-recursive",
-      "allow": [{ "path": ".openqr/**" }]
-    }
+      "allow": [
+        {
+          "path": ".openqr/**"
+        }
+      ]
+    },
+    "sql:default",
+    "sql:allow-execute"
   ]
 }

@@ -4,6 +4,7 @@ import { homeDir, join } from "@tauri-apps/api/path";
 import { exists, mkdir } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { LazyStore } from "@tauri-apps/plugin-store";
+import Database from "@tauri-apps/plugin-sql";
 
 import { useEffect, useState, useRef } from "react";
 import { toast, Toaster } from "sonner";
@@ -31,16 +32,40 @@ type ScanObject = {
   timestamp: string;
 };
 
+export type Config = {
+  allowlist: string[];
+  blocklist: string[];
+  history_storage_method: "sqlite" | "json";
+  scan_mode: "single" | "continuous";
+  notification_type: "toast" | "status";
+  max_history_items: number;
+  prefix: {
+    mode: "none" | "default" | "custom";
+    value?: string;
+  };
+  suffix: {
+    mode: "none" | "newline" | "tab" | "enter" | "custom";
+    value?: string;
+  };
+};
+
 function App() {
   const [mode, setMode] = useState<AppState>({ status: "IDLE" });
   const [isDark, setIsDark] = useState(true);
-  const [url, setUrl] = useState("https://google.com");
+  const [url, setUrl] = useState("https://www.google.com");
   const [history, setHistory] = useState<ScanObject[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [config, setConfig] = useState({
-    allowlist: ["google.com"],
+  const [config, setConfig] = useState<Config>({
+    allowlist: ["good.com"],
     blocklist: ["evil.com"],
+    history_storage_method: "json",
+    scan_mode: "single",
+    notification_type: "toast",
+    max_history_items: 100,
+    prefix: { mode: "none" },
+    suffix: { mode: "enter" },
   });
+  const [_, setDb] = useState<Database | null>(null);
 
   const buffer = useRef("");
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,6 +74,7 @@ function App() {
 
   useEffect(() => {
     const initApp = async () => {
+      // 1. Setup Paths & Store
       const home = await homeDir();
       const folderPath = await join(home, ".openqr");
       const filePath = await join(folderPath, "settings.json");
@@ -60,19 +86,61 @@ function App() {
 
       storeRef.current = new LazyStore(filePath);
 
-      // Load Theme
-      const savedTheme = await storeRef.current.get<boolean>("is-dark-mode");
+      // 2. Load Theme
+      const savedTheme = await storeRef.current.get<boolean>("dark-mode");
       if (savedTheme !== null && savedTheme !== undefined) {
         setIsDark(savedTheme);
       }
 
-      // Load Config
+      // 3. Load Config FIRST to determine storage method
+      // We use a local variable 'activeConfig' because state updates (setConfig) are async
+      // and won't be ready for the lines below immediately.
+      let activeConfig = config;
+
       const savedConfig =
         await storeRef.current.get<typeof config>("security-config");
       if (savedConfig) {
         setConfig(savedConfig);
+        activeConfig = savedConfig; // Use the loaded config for immediate logic
+      }
+
+      // 4. Branch Logic based on preference
+      if (activeConfig.history_storage_method === "sqlite") {
+        // --- SQLITE PATH ---
+        console.log("Initializing SQLite Storage...");
+
+        const dbPath = await join(folderPath, "history.db");
+        const connector = await Database.load(`sqlite:${dbPath}`);
+
+        await connector.execute(`
+          CREATE TABLE IF NOT EXISTS scan_history (
+            id TEXT PRIMARY KEY,
+            url TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        setDb(connector);
+
+        // Load initial history from DB
+        const result = await connector.select<ScanObject[]>(
+          "SELECT * FROM scan_history ORDER BY timestamp DESC LIMIT 100",
+        );
+        setHistory(result);
+      } else {
+        // --- JSON PATH ---
+        console.log("Initializing JSON Storage...");
+
+        // Ensure DB is null so we don't accidentally use it
+        setDb(null);
+
+        const savedHistory =
+          await storeRef.current.get<ScanObject[]>("scan-history");
+        if (savedHistory) {
+          setHistory(savedHistory);
+        }
       }
     };
+
     initApp();
   }, []);
 
@@ -90,7 +158,7 @@ function App() {
 
     const saveTheme = async () => {
       if (storeRef.current) {
-        await storeRef.current.set("is-dark-mode", isDark);
+        await storeRef.current.set("dark-mode", isDark);
         await storeRef.current.save();
       }
     };
@@ -121,25 +189,41 @@ function App() {
   const handleProcessScan = async (scannedUrl: string) => {
     setMode({ status: "PROCESSING", url: scannedUrl });
 
-    const newScan: ScanObject = {
-      id: crypto.randomUUID(),
-      url: scannedUrl,
-      timestamp: new Date().toLocaleTimeString(),
-    };
-    setHistory((prev) => [newScan, ...prev]);
-
     try {
-      await invoke("check_domain", {
+      const hostName = await invoke("check_url", {
         url: scannedUrl,
-        allowlist: config.allowlist,
-        blocklist: config.blocklist,
+        allowList: config.allowlist,
+        blockList: config.blocklist,
       });
 
-      const hostname = new URL(scannedUrl).hostname;
+      const newScan: ScanObject = {
+        id: crypto.randomUUID(),
+        url: scannedUrl,
+        timestamp: new Date().toLocaleString(),
+      };
+      if (config.history_storage_method == "sqlite") {
+        const db = await Database.load("sqlite:history.db");
+        await db.execute(
+          "INSERT INTO scan_history (id, url, timestamp) VALUES ($1, $2, $3)",
+          [newScan.id, newScan.url, newScan.timestamp],
+        );
+      }
+
+      setHistory((prev) => {
+        const updated = [newScan, ...prev].slice(0, 100); // Limit to 100 for performance
+
+        // Save the last 100 scans to settings.json
+        if (config.history_storage_method === "json" && storeRef.current) {
+          storeRef.current
+            .set("scan-history", updated)
+            .then(() => storeRef.current?.save());
+        }
+        return updated;
+      });
 
       setMode({ status: "PENDING_REDIRECT", url: scannedUrl });
 
-      const toastId = toast.success(`Verified: ${hostname}`, {
+      const toastId = toast.success(`Verified: ${hostName}`, {
         description: "Opening browser shortly...",
         duration: 4000,
         icon: "🌐",
@@ -157,7 +241,7 @@ function App() {
         activeToastId.current = null;
       }, 3000);
     } catch (err: any) {
-      toast.error("Security Alert", { description: err.toString() });
+      toast.error("Blocked", { description: err.toString() });
       setMode({ status: "IDLE" });
     }
   };
@@ -177,15 +261,18 @@ function App() {
     }
   };
 
-  const clearHistory = () => setHistory([]);
+  const clearHistory = async () => {
+    setHistory([]);
+    if (config.history_storage_method === "json" && storeRef.current) {
+      storeRef.current
+        .set("scan-history", [])
+        .then(() => storeRef.current?.save());
+    }
+  };
 
-  // The UI should never contradict the state
-  const isListening = mode.status === "LISTENING";
+  // const isListening = mode.status === "LISTENING";
+  // const activeTab = mode.status === "GENERATING" ? "generator" : "scanner";
 
-  // Map our modes to the tabs the Header expects
-  const activeTab = mode.status === "GENERATING" ? "generator" : "scanner";
-
-  // Calculate Footer Text
   const getFooterText = () => {
     switch (mode.status) {
       case "IDLE":
@@ -223,16 +310,16 @@ function App() {
   };
 
   // Handler for Generator to show temporary status messages
-  const triggerGenStatus = (msg: string) => {
-    setMode({ status: "GENERATING", feedback: msg });
-    setTimeout(() => {
-      setMode((current) => {
-        if (current.status === "GENERATING")
-          return { status: "GENERATING", feedback: undefined };
-        return current;
-      });
-    }, 4000);
-  };
+  // const triggerGenStatus = (msg: string) => {
+  //   setMode({ status: "GENERATING", feedback: msg });
+  //   setTimeout(() => {
+  //     setMode((current) => {
+  //       if (current.status === "GENERATING")
+  //         return { status: "GENERATING", feedback: undefined };
+  //       return current;
+  //     });
+  //   }, 4000);
+  // };
 
   return (
     <div className={isDark ? "dark" : ""}>
@@ -276,7 +363,7 @@ function App() {
               onStop={stopRedirect}
             />
           ) : (
-            <Generator url={url} setUrl={setUrl} setStatus={triggerGenStatus} />
+            <Generator url={url} setUrl={setUrl} />
           )}
         </main>
 
