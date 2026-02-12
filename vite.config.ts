@@ -33,4 +33,10 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  test: {
+    globals: true,
+    environment: "happy-dom",
+    setupFiles: ["./src/test-setup.ts"],
+  },
 }));

@@ -1,10 +1,8 @@
-// import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { homeDir, join } from "@tauri-apps/api/path";
-import { exists, mkdir } from "@tauri-apps/plugin-fs";
+import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { LazyStore } from "@tauri-apps/plugin-store";
-import Database from "@tauri-apps/plugin-sql";
+import { homeDir, join } from "@tauri-apps/api/path";
 
 import { useEffect, useState, useRef } from "react";
 import { toast, Toaster } from "sonner";
@@ -47,6 +45,7 @@ export type Config = {
     mode: "none" | "newline" | "tab" | "enter" | "custom";
     value?: string;
   };
+  close_to_tray: boolean;
 };
 
 function App() {
@@ -55,22 +54,24 @@ function App() {
   const [url, setUrl] = useState("https://www.google.com");
   const [history, setHistory] = useState<ScanObject[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [config, setConfig] = useState<Config>({
-    allowlist: ["good.com"],
-    blocklist: ["evil.com"],
-    history_storage_method: "json",
-    scan_mode: "single",
-    notification_type: "toast",
-    max_history_items: 100,
-    prefix: { mode: "none" },
-    suffix: { mode: "enter" },
-  });
-  const [_, setDb] = useState<Database | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
 
-  const buffer = useRef("");
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeToastId = useRef<string | number | null>(null);
   const storeRef = useRef<LazyStore | null>(null);
+
+  const notify = (
+    type: "success" | "error" | "info",
+    message: string,
+    opts?: { description?: string; icon?: string; duration?: number; action?: { label: string; onClick: () => void } },
+  ) => {
+    if (config?.notification_type === "status") return;
+    toast[type](message, {
+      position: "bottom-left",
+      duration: opts?.duration ?? 4000,
+      ...opts,
+    });
+  };
 
   const getStatusColor = (
     isGenerating: boolean,
@@ -78,94 +79,103 @@ function App() {
     isProcessing: boolean,
     isListening: boolean,
   ) => {
-    // Priority: Generating > Pending > Processing > Listening
     if (isGenerating) return "bg-blue-500 animate-pulse";
-    if (isPending) return "bg-blue-400 animate-pulse"; // Slightly lighter blue for redirect
+    if (isPending) return "bg-blue-400 animate-pulse";
     if (isProcessing) return "bg-yellow-500 animate-pulse";
-    if (isListening) return "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
+    if (isListening)
+      return "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
     return "bg-zinc-400";
   };
 
+  // Initialize: load config and history from Rust, theme from store
   useEffect(() => {
-    const initApp = async () => {
-      // 1. Setup Paths & Store
+    const init = async () => {
+      // Load theme from LazyStore (stays in frontend)
       const home = await homeDir();
       const folderPath = await join(home, ".openqr");
       const filePath = await join(folderPath, "settings.json");
-
-      const folderExists = await exists(folderPath);
-      if (!folderExists) {
-        await mkdir(folderPath, { recursive: true });
-      }
-
       storeRef.current = new LazyStore(filePath);
 
-      // 2. Load Theme
       const savedTheme = await storeRef.current.get<boolean>("dark-mode");
       if (savedTheme !== null && savedTheme !== undefined) {
         setIsDark(savedTheme);
       }
 
-      // 3. Load Config FIRST to determine storage method
-      // We use a local variable 'activeConfig' because state updates (setConfig) are async
-      // and won't be ready for the lines below immediately.
-      let activeConfig = config;
+      // Load config and history from Rust backend
+      const cfg = await invoke<Config>("get_config");
+      setConfig(cfg);
 
-      const savedConfig =
-        await storeRef.current.get<typeof config>("security-config");
-      if (savedConfig) {
-        setConfig(savedConfig);
-        activeConfig = savedConfig;
-      }
-
-      if (activeConfig.history_storage_method === "sqlite") {
-        // SQL
-        console.log("Initializing SQLite Storage...");
-
-        const dbPath = await join(folderPath, "history.db");
-        const connector = await Database.load(`sqlite:${dbPath}`);
-
-        await connector.execute(`
-          CREATE TABLE IF NOT EXISTS scan_history (
-            id TEXT PRIMARY KEY,
-            url TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        setDb(connector);
-
-        // Load initial history from DB
-        const result = await connector.select<ScanObject[]>(
-          "SELECT * FROM scan_history ORDER BY timestamp DESC LIMIT 100",
-        );
-        setHistory(result);
-      } else {
-        // JSON
-        console.log("Initializing JSON Storage...");
-        setDb(null); // setting DB to null just in case
-
-        const savedHistory =
-          await storeRef.current.get<ScanObject[]>("scan-history");
-        if (savedHistory) {
-          setHistory(savedHistory);
-        }
-      }
+      const hist = await invoke<ScanObject[]>("get_history");
+      setHistory(hist);
     };
-
-    initApp();
+    init();
   }, []);
 
-  const saveConfig = async (newConfig: typeof config) => {
-    if (!storeRef.current) return;
-    setConfig(newConfig);
-    await storeRef.current.set("security-config", newConfig);
-    await storeRef.current.save();
-    toast.success("Security settings updated", {
-      position: "bottom-left",
-      duration: 4000,
-    });
-  };
+  // Listen for scan events from rdev global listener
+  useEffect(() => {
+    const unlisten = listen<string>("scan-input", async (event) => {
+      const rawInput = event.payload;
+      setMode({ status: "PROCESSING", url: rawInput });
 
+      try {
+        const hostname = await invoke<string>("process_scan", { rawInput });
+
+        // Refresh history from Rust
+        const hist = await invoke<ScanObject[]>("get_history");
+        setHistory(hist);
+
+        setMode({ status: "PENDING_REDIRECT", url: rawInput });
+
+        const toastId = toast.success(`Verified: ${hostname}`, {
+          position: "bottom-left",
+          description: "Opening browser shortly...",
+          duration: 4000,
+          icon: "🌐",
+          action: {
+            label: "Cancel",
+            onClick: () => stopRedirect(),
+          },
+        });
+        activeToastId.current = toastId;
+
+        redirectTimer.current = setTimeout(async () => {
+          await openUrl(rawInput);
+          toast.dismiss(toastId);
+          activeToastId.current = null;
+
+          if (config?.scan_mode === "single") {
+            await invoke("stop_global_listener");
+            setMode({ status: "IDLE" });
+          } else {
+            setMode({ status: "LISTENING" });
+          }
+        }, 3000);
+      } catch (err: any) {
+        notify("error", "Blocked", { description: err.toString() });
+        setMode(
+          config?.scan_mode === "continuous"
+            ? { status: "LISTENING" }
+            : { status: "IDLE" },
+        );
+      }
+    });
+
+    // Listen for scan errors (e.g. rdev permission issues)
+    const unlistenErr = listen<string>("scan-error", (event) => {
+      notify("error", "Listener Error", {
+        description: event.payload,
+        duration: 10000,
+      });
+      setMode({ status: "IDLE" });
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+      unlistenErr.then((fn) => fn());
+    };
+  }, [config]);
+
+  // Theme persistence
   useEffect(() => {
     if (isDark) document.documentElement.classList.add("dark");
     else document.documentElement.classList.remove("dark");
@@ -179,89 +189,50 @@ function App() {
     saveTheme();
   }, [isDark]);
 
-  useEffect(() => {
-    if (mode.status !== "LISTENING") return;
-
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        const finalCode = buffer.current;
-        buffer.current = ""; // Reset buffer
-
-        if (finalCode.length > 0) {
-          handleProcessScan(finalCode);
-        }
-      } else {
-        if (e.key.length === 1) {
-          buffer.current += e.key;
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode.status]);
-
-  const handleProcessScan = async (scannedUrl: string) => {
-    setMode({ status: "PROCESSING", url: scannedUrl });
-
+  const toggleListening = async (shouldListen: boolean) => {
     try {
-      const hostName = await invoke("check_url", {
-        url: scannedUrl,
-        allowList: config.allowlist,
-        blockList: config.blocklist,
-      });
-
-      const newScan: ScanObject = {
-        id: crypto.randomUUID(),
-        url: scannedUrl,
-        timestamp: new Date().toLocaleString(),
-      };
-      if (config.history_storage_method == "sqlite") {
-        const db = await Database.load("sqlite:history.db");
-        await db.execute(
-          "INSERT INTO scan_history (id, url, timestamp) VALUES ($1, $2, $3)",
-          [newScan.id, newScan.url, newScan.timestamp],
-        );
-      }
-
-      setHistory((prev) => {
-        const updated = [newScan, ...prev].slice(0, 100); // Limit to 100 for performance
-
-        // Save the last 100 scans to settings.json
-        if (config.history_storage_method === "json" && storeRef.current) {
-          storeRef.current
-            .set("scan-history", updated)
-            .then(() => storeRef.current?.save());
-        }
-        return updated;
-      });
-
-      setMode({ status: "PENDING_REDIRECT", url: scannedUrl });
-
-      const toastId = toast.success(`Verified: ${hostName}`, {
-        position: "bottom-left",
-        description: "Opening browser shortly...",
-        duration: 4000,
-        icon: "🌐",
-        action: {
-          label: "Cancel",
-          onClick: () => stopRedirect(),
-        },
-      });
-      activeToastId.current = toastId;
-
-      redirectTimer.current = setTimeout(async () => {
-        await openUrl(scannedUrl);
-        toast.dismiss(toastId);
+      if (shouldListen) {
+        await invoke("start_global_listener");
+        setMode({ status: "LISTENING" });
+      } else {
+        await invoke("stop_global_listener");
         setMode({ status: "IDLE" });
-        activeToastId.current = null;
-      }, 3000);
+      }
     } catch (err: any) {
-      toast.error("Blocked", {
+      notify("error", "Listener error", { description: err.toString() });
+    }
+  };
+
+  const handleScannerToggle = (
+    shouldListen: boolean | ((prev: boolean) => boolean),
+  ) => {
+    const nextState =
+      typeof shouldListen === "function"
+        ? shouldListen(mode.status === "LISTENING")
+        : shouldListen;
+    toggleListening(nextState);
+  };
+
+  const saveConfig = async (newConfig: Config) => {
+    try {
+      await invoke("save_config", { config: newConfig });
+      setConfig(newConfig);
+      notify("success", "Settings updated");
+    } catch (err: any) {
+      notify("error", "Failed to save settings", {
         description: err.toString(),
-        position: "bottom-left",
-        duration: 4000,
       });
-      setMode({ status: "IDLE" });
+    }
+  };
+
+  const clearHistory = async () => {
+    try {
+      await invoke("clear_history");
+      setHistory([]);
+    } catch (err: any) {
+      notify("error", "Failed to clear history", {
+        description: err.toString(),
+      });
     }
   };
 
@@ -276,24 +247,9 @@ function App() {
       }
 
       setMode({ status: "IDLE" });
-      toast.info("Redirect stopped", {
-        position: "bottom-left",
-        duration: 4000,
-      });
+      notify("info", "Redirect stopped");
     }
   };
-
-  const clearHistory = async () => {
-    setHistory([]);
-    if (config.history_storage_method === "json" && storeRef.current) {
-      storeRef.current
-        .set("scan-history", [])
-        .then(() => storeRef.current?.save());
-    }
-  };
-
-  // const isListening = mode.status === "LISTENING";
-  // const activeTab = mode.status === "GENERATING" ? "generator" : "scanner";
 
   const getFooterText = () => {
     switch (mode.status) {
@@ -314,34 +270,18 @@ function App() {
     }
   };
 
-  // Handler for Header tab switching
   const handleTabChange = (tab: string) => {
     if (tab === "generator") setMode({ status: "GENERATING" });
     else setMode({ status: "IDLE" });
   };
 
-  // Handler for Scanner component to toggle listening
-  const handleScannerToggle = (
-    shouldListen: boolean | ((prev: boolean) => boolean),
-  ) => {
-    const nextState =
-      typeof shouldListen === "function"
-        ? shouldListen(mode.status === "LISTENING")
-        : shouldListen;
-    setMode(nextState ? { status: "LISTENING" } : { status: "IDLE" });
-  };
-
-  // Handler for Generator to show temporary status messages
-  // const triggerGenStatus = (msg: string) => {
-  //   setMode({ status: "GENERATING", feedback: msg });
-  //   setTimeout(() => {
-  //     setMode((current) => {
-  //       if (current.status === "GENERATING")
-  //         return { status: "GENERATING", feedback: undefined };
-  //       return current;
-  //     });
-  //   }, 4000);
-  // };
+  if (!config) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-[#09090b]">
+        <p className="text-zinc-500 text-sm">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className={isDark ? "dark" : ""}>

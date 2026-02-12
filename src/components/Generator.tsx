@@ -41,7 +41,7 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
       if (!blob) throw new Error("Blob failed");
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const tauriImage = await Image.fromBytes(bytes);
-      await writeImage(tauriImage);
+      await writeImage(tauriImage as any);
       toast.success("Copied to clipboard!", {
         position: "bottom-left",
         duration: 4000,
