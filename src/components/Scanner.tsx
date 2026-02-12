@@ -10,6 +10,12 @@ interface ScannerProps {
   onClear: () => void;
   mode: { status: string; url?: string };
   onStop: () => void;
+  getStatusColor: (
+    isGenerating: boolean,
+    isPending: boolean,
+    isProcessing: boolean,
+    isListening: boolean,
+  ) => string;
 }
 
 const Scanner = ({
@@ -23,10 +29,24 @@ const Scanner = ({
 }: ScannerProps) => {
   const isProcessing = mode.status === "PROCESSING";
   const isPending = mode.status === "PENDING_REDIRECT";
+  const isGenerating = mode.status === "GENERATING";
+
+  const getIndicatorClasses = () => {
+    if (isGenerating)
+      return "bg-blue-500 animate-pulse shadow-[0_0_15px_rgba(59,130,246,0.5)]";
+    if (isPending) return "bg-blue-400 animate-pulse";
+    if (isProcessing) return "bg-yellow-500 animate-pulse";
+    if (isListening)
+      return "bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.4)]";
+    return "bg-zinc-400";
+  };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success("Copied to clipboard", {
+      position: "bottom-left",
+      duration: 4000,
+    });
   };
 
   const copyAll = () => {
@@ -37,32 +57,17 @@ const Scanner = ({
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div
-        className={`bg-white dark:bg-[#252525] border transition-colors duration-500 rounded-2xl p-8 flex flex-col items-center shadow-lg
-        ${
-          isPending
-            ? "border-blue-500/50 dark:border-blue-500/30 shadow-blue-500/10"
-            : "border-zinc-200 dark:border-white/5"
-        }`}
+        className={`bg-white dark:bg-[#252525] border transition-all duration-500 rounded-2xl p-8 flex flex-col items-center shadow-lg
+            ${isPending ? "border-blue-500/50 shadow-blue-500/10" : "border-zinc-200 dark:border-white/5"}`}
       >
-        {/* Status Indicator / Icon */}
         <div
-          className={`w-4 h-4 rounded-full mb-4 transition-all duration-500 flex items-center justify-center ${
-            isPending
-              ? "bg-blue-500 scale-150 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
-              : isProcessing
-                ? "bg-yellow-500 animate-pulse"
-                : isListening
-                  ? "bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.4)]"
-                  : "bg-zinc-400"
-          }`}
+          className={`w-4 h-4 rounded-full mb-4 transition-all duration-500 flex items-center justify-center ${getIndicatorClasses()}`}
         >
-          {/* Show a tiny spinner inside the dot if pending */}
           {isPending && (
             <Loader2 className="w-2.5 h-2.5 text-white animate-spin" />
           )}
         </div>
 
-        {/* Main Status Text */}
         <h2 className="text-4xl font-black tracking-tight mb-2 dark:text-white text-center transition-all">
           {isPending
             ? "Opening..."
@@ -70,7 +75,7 @@ const Scanner = ({
               ? "Checking..."
               : isListening
                 ? "Listening..."
-                : "Paused"}
+                : "Ready"}
         </h2>
 
         {/* Subtext / URL Display */}

@@ -42,9 +42,12 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const tauriImage = await Image.fromBytes(bytes);
       await writeImage(tauriImage);
-      toast.success("Copied to clipboard!");
+      toast.success("Copied to clipboard!", {
+        position: "bottom-left",
+        duration: 4000,
+      });
     } catch (err) {
-      toast.error("Copy failed");
+      toast.error("Copy failed", { position: "bottom-left", duration: 4000 });
     }
   };
 
@@ -89,7 +92,10 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
       toast.success(`Downloaded to ${filePath}!`);
     } catch (err) {
       console.error("Download failed:", err);
-      toast.error("Download failed");
+      toast.error("Download failed", {
+        position: "bottom-left",
+        duration: 4000,
+      });
     }
   };
 
@@ -211,7 +217,10 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
         <button
           onClick={() => {
             setLogo(undefined);
-            toast.success("Logo removed");
+            toast.success("Logo removed", {
+              position: "bottom-left",
+              duration: 4000,
+            });
           }}
           className="flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold"
         >
@@ -229,7 +238,10 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
               const reader = new FileReader();
               reader.onloadend = () => setLogo(reader.result as string);
               reader.readAsDataURL(file);
-              toast.success("Logo added!");
+              toast.success("Logo added!", {
+                position: "bottom-left",
+                duration: 4000,
+              });
             }
           }}
         />

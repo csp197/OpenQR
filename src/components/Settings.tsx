@@ -1,9 +1,10 @@
-import { X, Trash2, FolderOpen, Database, FileJson } from "lucide-react";
+import { X, FolderOpen, Database, FileJson } from "lucide-react";
 import { useState, useEffect } from "react";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { Config } from "../App";
+import ListSection from "./ListSection";
 
 interface SettingsProps {
   isOpen: boolean;
@@ -33,7 +34,10 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
     if (!domain) return;
 
     if (allowlist.includes(domain) || blocklist.includes(domain)) {
-      toast.error(`"${domain}" is already listed`);
+      toast.error(`"${domain}" is already listed`, {
+        position: "bottom-left",
+        duration: 4000,
+      });
       return;
     }
 
@@ -48,7 +52,10 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
       const folderPath = await join(home, ".openqr");
       await openPath(folderPath);
     } catch (err) {
-      toast.error("Could not open settings folder.");
+      toast.error("Could not open settings folder.", {
+        position: "bottom-left",
+        duration: 4000,
+      });
     }
   };
 
@@ -139,12 +146,14 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
                 items={allowlist}
                 setItems={setAllowlist}
                 color="text-green-500"
+                placeholder="All URLs are allowed by default"
               />
               <ListSection
                 title="Blocklist"
                 items={blocklist}
                 setItems={setBlocklist}
                 color="text-red-500"
+                placeholder="No URLs are currently blocked"
               />
             </div>
           </div>
@@ -171,38 +180,12 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
             className="w-full py-2 flex items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 text-xs transition-colors"
           >
             <FolderOpen size={14} />
-            Open configuration folder
+            Open config folder (look for settings.json)
           </button>
         </div>
       </div>
     </div>
   );
 };
-
-const ListSection = ({ title, items, setItems, color }: any) => (
-  <div className="space-y-2">
-    <h3 className={`text-[10px] font-bold uppercase tracking-widest ${color}`}>
-      {title}
-    </h3>
-    <div className="space-y-1">
-      {items.map((item: string, i: number) => (
-        <div
-          key={i}
-          className="flex justify-between items-center p-2 bg-zinc-100 dark:bg-white/5 rounded-lg text-xs group"
-        >
-          <span className="truncate">{item}</span>
-          <button
-            onClick={() =>
-              setItems(items.filter((_: any, idx: number) => idx !== i))
-            }
-            className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500"
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
-      ))}
-    </div>
-  </div>
-);
 
 export default Settings;

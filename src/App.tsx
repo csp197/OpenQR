@@ -72,6 +72,20 @@ function App() {
   const activeToastId = useRef<string | number | null>(null);
   const storeRef = useRef<LazyStore | null>(null);
 
+  const getStatusColor = (
+    isGenerating: boolean,
+    isPending: boolean,
+    isProcessing: boolean,
+    isListening: boolean,
+  ) => {
+    // Priority: Generating > Pending > Processing > Listening
+    if (isGenerating) return "bg-blue-500 animate-pulse";
+    if (isPending) return "bg-blue-400 animate-pulse"; // Slightly lighter blue for redirect
+    if (isProcessing) return "bg-yellow-500 animate-pulse";
+    if (isListening) return "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
+    return "bg-zinc-400";
+  };
+
   useEffect(() => {
     const initApp = async () => {
       // 1. Setup Paths & Store
@@ -101,12 +115,11 @@ function App() {
         await storeRef.current.get<typeof config>("security-config");
       if (savedConfig) {
         setConfig(savedConfig);
-        activeConfig = savedConfig; // Use the loaded config for immediate logic
+        activeConfig = savedConfig;
       }
 
-      // 4. Branch Logic based on preference
       if (activeConfig.history_storage_method === "sqlite") {
-        // --- SQLITE PATH ---
+        // SQL
         console.log("Initializing SQLite Storage...");
 
         const dbPath = await join(folderPath, "history.db");
@@ -127,11 +140,9 @@ function App() {
         );
         setHistory(result);
       } else {
-        // --- JSON PATH ---
+        // JSON
         console.log("Initializing JSON Storage...");
-
-        // Ensure DB is null so we don't accidentally use it
-        setDb(null);
+        setDb(null); // setting DB to null just in case
 
         const savedHistory =
           await storeRef.current.get<ScanObject[]>("scan-history");
@@ -149,7 +160,10 @@ function App() {
     setConfig(newConfig);
     await storeRef.current.set("security-config", newConfig);
     await storeRef.current.save();
-    toast.success("Security settings updated");
+    toast.success("Security settings updated", {
+      position: "bottom-left",
+      duration: 4000,
+    });
   };
 
   useEffect(() => {
@@ -224,6 +238,7 @@ function App() {
       setMode({ status: "PENDING_REDIRECT", url: scannedUrl });
 
       const toastId = toast.success(`Verified: ${hostName}`, {
+        position: "bottom-left",
         description: "Opening browser shortly...",
         duration: 4000,
         icon: "🌐",
@@ -241,7 +256,11 @@ function App() {
         activeToastId.current = null;
       }, 3000);
     } catch (err: any) {
-      toast.error("Blocked", { description: err.toString() });
+      toast.error("Blocked", {
+        description: err.toString(),
+        position: "bottom-left",
+        duration: 4000,
+      });
       setMode({ status: "IDLE" });
     }
   };
@@ -257,7 +276,10 @@ function App() {
       }
 
       setMode({ status: "IDLE" });
-      toast.info("Redirect stopped");
+      toast.info("Redirect stopped", {
+        position: "bottom-left",
+        duration: 4000,
+      });
     }
   };
 
@@ -276,7 +298,7 @@ function App() {
   const getFooterText = () => {
     switch (mode.status) {
       case "IDLE":
-        return "Ready to scan";
+        return "NOT Listening";
       case "LISTENING":
         return "Listening for QR code...";
       case "PROCESSING":
@@ -286,7 +308,7 @@ function App() {
       case "ERROR":
         return `Error - ${mode.message}`;
       case "GENERATING":
-        return mode.feedback || "Generator Mode";
+        return mode.feedback || "Generating QR Code...";
       default:
         return "";
     }
@@ -361,13 +383,19 @@ function App() {
               onClear={clearHistory}
               mode={mode}
               onStop={stopRedirect}
+              getStatusColor={getStatusColor}
             />
           ) : (
             <Generator url={url} setUrl={setUrl} />
           )}
         </main>
 
-        <Footer status={getFooterText()} />
+        <Footer
+          status={getFooterText()}
+          isListening={mode.status === "LISTENING"}
+          mode={mode}
+          getStatusColor={getStatusColor}
+        />
       </div>
     </div>
   );
