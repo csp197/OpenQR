@@ -7,7 +7,6 @@ pub fn check_url(
     let full_url = normalize_url(&url)?;
 
     let parsed = url::Url::parse(&full_url).map_err(|_| "Invalid URL format".to_string())?;
-
     let domain = parsed
         .domain()
         .ok_or_else(|| "URL has no valid domain".to_string())?
@@ -63,10 +62,7 @@ mod tests {
 
     #[test]
     fn normalize_url_without_scheme() {
-        assert_eq!(
-            normalize_url("example.com").unwrap(),
-            "https://example.com"
-        );
+        assert_eq!(normalize_url("example.com").unwrap(), "https://example.com");
     }
 
     #[test]

@@ -55,6 +55,7 @@ function App() {
   const [history, setHistory] = useState<ScanObject[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState<Config | null>(null);
+  const [listenerActive, setListenerActive] = useState(false);
 
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeToastId = useRef<string | number | null>(null);
@@ -63,7 +64,12 @@ function App() {
   const notify = (
     type: "success" | "error" | "info",
     message: string,
-    opts?: { description?: string; icon?: string; duration?: number; action?: { label: string; onClick: () => void } },
+    opts?: {
+      description?: string;
+      icon?: string;
+      duration?: number;
+      action?: { label: string; onClick: () => void };
+    },
   ) => {
     if (config?.notification_type === "status") return;
     toast[type](message, {
@@ -82,8 +88,7 @@ function App() {
     if (isGenerating) return "bg-blue-500 animate-pulse";
     if (isPending) return "bg-blue-400 animate-pulse";
     if (isProcessing) return "bg-yellow-500 animate-pulse";
-    if (isListening)
-      return "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
+    if (isListening) return "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]";
     return "bg-zinc-400";
   };
 
@@ -145,6 +150,7 @@ function App() {
 
           if (config?.scan_mode === "single") {
             await invoke("stop_global_listener");
+            setListenerActive(false);
             setMode({ status: "IDLE" });
           } else {
             setMode({ status: "LISTENING" });
@@ -152,12 +158,20 @@ function App() {
         }, 3000);
       } catch (err: any) {
         notify("error", "Blocked", { description: err.toString() });
-        setMode(
-          config?.scan_mode === "continuous"
-            ? { status: "LISTENING" }
-            : { status: "IDLE" },
-        );
+        // Keep listener running on error — user can try another scan.
+        // Only a successful scan in single mode stops the listener.
+        setMode({ status: "LISTENING" });
       }
+    });
+
+    // Debug: show what the buffer actually captured
+    const unlistenDebug = listen<string>("scan-debug", (event) => {
+      console.log("[scan-debug]", event.payload);
+      toast.info("Debug", {
+        description: event.payload,
+        position: "bottom-left",
+        duration: 10000,
+      });
     });
 
     // Listen for scan errors (e.g. rdev permission issues)
@@ -166,11 +180,13 @@ function App() {
         description: event.payload,
         duration: 10000,
       });
+      setListenerActive(false);
       setMode({ status: "IDLE" });
     });
 
     return () => {
       unlisten.then((fn) => fn());
+      unlistenDebug.then((fn) => fn());
       unlistenErr.then((fn) => fn());
     };
   }, [config]);
@@ -189,13 +205,28 @@ function App() {
     saveTheme();
   }, [isDark]);
 
+  // Sync tray icon state with app mode
+  useEffect(() => {
+    let trayState: string;
+    if (mode.status === "GENERATING") {
+      trayState = "generating";
+    } else if (listenerActive) {
+      trayState = "listening";
+    } else {
+      trayState = "idle";
+    }
+    invoke("set_tray_state", { trayState }).catch(() => {});
+  }, [mode.status, listenerActive]);
+
   const toggleListening = async (shouldListen: boolean) => {
     try {
       if (shouldListen) {
         await invoke("start_global_listener");
+        setListenerActive(true);
         setMode({ status: "LISTENING" });
       } else {
         await invoke("stop_global_listener");
+        setListenerActive(false);
         setMode({ status: "IDLE" });
       }
     } catch (err: any) {
@@ -208,7 +239,7 @@ function App() {
   ) => {
     const nextState =
       typeof shouldListen === "function"
-        ? shouldListen(mode.status === "LISTENING")
+        ? shouldListen(listenerActive)
         : shouldListen;
     toggleListening(nextState);
   };
@@ -236,7 +267,7 @@ function App() {
     }
   };
 
-  const stopRedirect = () => {
+  const stopRedirect = async () => {
     if (redirectTimer.current) {
       clearTimeout(redirectTimer.current);
       redirectTimer.current = null;
@@ -246,7 +277,13 @@ function App() {
         activeToastId.current = null;
       }
 
-      setMode({ status: "IDLE" });
+      if (config?.scan_mode === "continuous") {
+        setMode({ status: "LISTENING" });
+      } else {
+        await invoke("stop_global_listener");
+        setListenerActive(false);
+        setMode({ status: "IDLE" });
+      }
       notify("info", "Redirect stopped");
     }
   };
@@ -254,7 +291,7 @@ function App() {
   const getFooterText = () => {
     switch (mode.status) {
       case "IDLE":
-        return "NOT Listening";
+        return listenerActive ? "Listening for QR code..." : "NOT Listening";
       case "LISTENING":
         return "Listening for QR code...";
       case "PROCESSING":
@@ -270,9 +307,16 @@ function App() {
     }
   };
 
-  const handleTabChange = (tab: string) => {
-    if (tab === "generator") setMode({ status: "GENERATING" });
-    else setMode({ status: "IDLE" });
+  const handleTabChange = async (tab: string) => {
+    if (tab === "generator") {
+      if (listenerActive) {
+        await invoke("stop_global_listener");
+        setListenerActive(false);
+      }
+      setMode({ status: "GENERATING" });
+    } else {
+      setMode({ status: "IDLE" });
+    }
   };
 
   if (!config) {
@@ -316,7 +360,7 @@ function App() {
         <main className="flex-1 overflow-y-auto p-8 max-w-2xl mx-auto w-full">
           {mode.status !== "GENERATING" ? (
             <Scanner
-              isListening={mode.status === "LISTENING"}
+              isListening={listenerActive}
               setIsListening={handleScannerToggle}
               status={getFooterText()}
               history={history}
@@ -332,7 +376,7 @@ function App() {
 
         <Footer
           status={getFooterText()}
-          isListening={mode.status === "LISTENING"}
+          isListening={listenerActive}
           mode={mode}
           getStatusColor={getStatusColor}
         />

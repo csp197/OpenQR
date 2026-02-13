@@ -15,11 +15,20 @@ use crate::state::AppState;
 enum KeyMessage {
     Char(char),
     Enter,
+    Tab,
 }
 
-/// Process buffered key messages: accumulate chars, emit on Enter.
-fn process_key_buffer(rx: mpsc::Receiver<KeyMessage>, mut on_scan: impl FnMut(String)) {
+/// Process buffered key messages: accumulate chars, emit on trigger key.
+/// The `suffix_mode` controls which key triggers scan completion:
+/// - "tab" → Tab triggers scan, Enter is ignored
+/// - anything else → Enter triggers scan, Tab is ignored
+fn process_key_buffer(
+    rx: mpsc::Receiver<KeyMessage>,
+    suffix_mode: &str,
+    mut on_scan: impl FnMut(String),
+) {
     let mut buffer = String::new();
+    let use_tab_trigger = suffix_mode == "tab";
 
     while let Ok(msg) = rx.recv() {
         match msg {
@@ -27,7 +36,13 @@ fn process_key_buffer(rx: mpsc::Receiver<KeyMessage>, mut on_scan: impl FnMut(St
                 buffer.push(c);
             }
             KeyMessage::Enter => {
-                if !buffer.is_empty() {
+                if !use_tab_trigger && !buffer.is_empty() {
+                    on_scan(buffer.clone());
+                    buffer.clear();
+                }
+            }
+            KeyMessage::Tab => {
+                if use_tab_trigger && !buffer.is_empty() {
                     on_scan(buffer.clone());
                     buffer.clear();
                 }
@@ -40,12 +55,15 @@ fn process_key_buffer(rx: mpsc::Receiver<KeyMessage>, mut on_scan: impl FnMut(St
 /// Extracted for testability. Returns None for events that should be ignored
 /// (modifier keys, unmapped keys, etc.)
 fn keycode_to_message(keycode: i64, unicode_char: Option<char>) -> Option<KeyMessage> {
-    // macOS virtual key codes for Return / Keypad Enter
+    // macOS virtual key codes
     const VK_RETURN: i64 = 0x24;
     const VK_KP_ENTER: i64 = 0x4C;
+    const VK_TAB: i64 = 0x30;
 
     if keycode == VK_RETURN || keycode == VK_KP_ENTER {
         Some(KeyMessage::Enter)
+    } else if keycode == VK_TAB {
+        Some(KeyMessage::Tab)
     } else if let Some(c) = unicode_char {
         if !c.is_control() {
             Some(KeyMessage::Char(c))
@@ -351,6 +369,9 @@ mod fallback_listener {
                     Key::Return | Key::KpReturn => {
                         let _ = tx.send(KeyMessage::Enter);
                     }
+                    Key::Tab => {
+                        let _ = tx.send(KeyMessage::Tab);
+                    }
                     _ => {
                         if let Some(c) = char_from_event(&event, &key) {
                             let _ = tx.send(KeyMessage::Char(c));
@@ -365,11 +386,21 @@ mod fallback_listener {
 }
 
 #[tauri::command]
-pub fn process_scan(state: State<'_, AppState>, raw_input: String) -> Result<String, String> {
+pub fn process_scan(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    raw_input: String,
+) -> Result<String, String> {
     let config = state.config.lock().map_err(|e| e.to_string())?.clone();
 
     let after_prefix = strip_prefix(&raw_input, &config.prefix);
-    let cleaned = strip_suffix(&after_prefix, &config.suffix);
+    let cleaned = strip_suffix(&after_prefix, &config.suffix).trim().to_string();
+
+    // Debug: emit raw buffer so frontend can see what was actually captured
+    let _ = app.emit("scan-debug", format!(
+        "raw={:?} cleaned={:?} len={}",
+        raw_input, cleaned, cleaned.len()
+    ));
 
     let hostname = check_url(
         cleaned.clone(),
@@ -384,7 +415,12 @@ pub fn process_scan(state: State<'_, AppState>, raw_input: String) -> Result<Str
             .format("%Y-%m-%d %H:%M:%S")
             .to_string(),
     };
-    add_scan_internal(&state.data_dir, config.max_history_items, &scan)?;
+    add_scan_internal(
+        &state.data_dir,
+        config.max_history_items,
+        &scan,
+        &config.history_storage_method,
+    )?;
 
     Ok(hostname)
 }
@@ -403,6 +439,13 @@ pub fn start_global_listener(
     let active_for_listener = active.clone();
     let active_for_cleanup = active.clone();
     let app_clone = app.clone();
+
+    // Read suffix mode from config for the processor thread
+    let suffix_mode = state
+        .config
+        .lock()
+        .map(|c| c.suffix.mode.clone())
+        .unwrap_or_else(|_| "enter".to_string());
 
     let (tx, rx) = mpsc::channel::<KeyMessage>();
 
@@ -424,7 +467,7 @@ pub fn start_global_listener(
     // Processor thread — reads key messages and emits scan events to Tauri
     let app_for_emit = app.clone();
     thread::spawn(move || {
-        process_key_buffer(rx, |content| {
+        process_key_buffer(rx, &suffix_mode, |content| {
             let _ = app_for_emit.emit("scan-input", content);
         });
     });
@@ -654,9 +697,13 @@ mod tests {
     }
 
     #[test]
+    fn keycode_tab_sends_tab() {
+        assert_eq!(keycode_to_message(0x30, Some('\t')), Some(KeyMessage::Tab));
+    }
+
+    #[test]
     fn keycode_control_char_ignored() {
-        // Control characters (tab, escape, etc.) should be ignored
-        assert_eq!(keycode_to_message(0x30, Some('\t')), None);
+        // Control characters (escape, etc.) should be ignored
         assert_eq!(keycode_to_message(0x35, Some('\u{1b}')), None); // Escape
     }
 
@@ -702,7 +749,7 @@ mod tests {
         tx.send(KeyMessage::Enter).unwrap();
         drop(tx);
 
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["hi"]);
     }
@@ -723,7 +770,7 @@ mod tests {
         tx.send(KeyMessage::Enter).unwrap();
 
         drop(tx);
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["https://a.com", "https://b.com"]);
     }
@@ -739,7 +786,7 @@ mod tests {
         tx.send(KeyMessage::Enter).unwrap();
         drop(tx);
 
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["a"]);
     }
@@ -753,9 +800,77 @@ mod tests {
         tx.send(KeyMessage::Char('b')).unwrap();
         drop(tx);
 
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, Vec::<String>::new());
+    }
+
+    // ─── Tab trigger tests ──────────────────────────────────
+
+    #[test]
+    fn process_buffer_tab_trigger_fires_on_tab() {
+        let (tx, rx) = mpsc::channel();
+        let mut results: Vec<String> = Vec::new();
+
+        tx.send(KeyMessage::Char('h')).unwrap();
+        tx.send(KeyMessage::Char('i')).unwrap();
+        tx.send(KeyMessage::Tab).unwrap();
+        drop(tx);
+
+        process_key_buffer(rx, "tab", |s| results.push(s));
+
+        assert_eq!(results, vec!["hi"]);
+    }
+
+    #[test]
+    fn process_buffer_tab_trigger_ignores_enter() {
+        let (tx, rx) = mpsc::channel();
+        let mut results: Vec<String> = Vec::new();
+
+        tx.send(KeyMessage::Char('a')).unwrap();
+        tx.send(KeyMessage::Enter).unwrap(); // should be ignored in tab mode
+        tx.send(KeyMessage::Char('b')).unwrap();
+        tx.send(KeyMessage::Tab).unwrap();
+        drop(tx);
+
+        process_key_buffer(rx, "tab", |s| results.push(s));
+
+        // Enter doesn't trigger, so "a" + Enter ignored, buffer continues: "ab"
+        // Wait — Enter doesn't flush, so buffer is "a" then Enter is ignored,
+        // then 'b' added → buffer is "ab", then Tab flushes "ab"
+        assert_eq!(results, vec!["ab"]);
+    }
+
+    #[test]
+    fn process_buffer_enter_trigger_ignores_tab() {
+        let (tx, rx) = mpsc::channel();
+        let mut results: Vec<String> = Vec::new();
+
+        tx.send(KeyMessage::Char('x')).unwrap();
+        tx.send(KeyMessage::Tab).unwrap(); // should be ignored in enter mode
+        tx.send(KeyMessage::Char('y')).unwrap();
+        tx.send(KeyMessage::Enter).unwrap();
+        drop(tx);
+
+        process_key_buffer(rx, "enter", |s| results.push(s));
+
+        assert_eq!(results, vec!["xy"]);
+    }
+
+    #[test]
+    fn process_buffer_tab_trigger_empty_buffer_ignored() {
+        let (tx, rx) = mpsc::channel();
+        let mut results: Vec<String> = Vec::new();
+
+        tx.send(KeyMessage::Tab).unwrap();
+        tx.send(KeyMessage::Tab).unwrap();
+        tx.send(KeyMessage::Char('z')).unwrap();
+        tx.send(KeyMessage::Tab).unwrap();
+        drop(tx);
+
+        process_key_buffer(rx, "tab", |s| results.push(s));
+
+        assert_eq!(results, vec!["z"]);
     }
 
     // ─── Integration: keycode → channel → buffer ─────────────
@@ -797,7 +912,7 @@ mod tests {
         }
 
         drop(tx);
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["https://example.com"]);
     }
@@ -817,7 +932,7 @@ mod tests {
         }
 
         drop(tx);
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["abc", "def", "ghi"]);
     }
@@ -834,17 +949,17 @@ mod tests {
         tx.send(KeyMessage::Enter).unwrap();
         drop(tx);
 
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["A"]);
     }
 
     #[test]
-    fn integration_control_chars_filtered() {
+    fn integration_tab_ignored_in_enter_mode() {
         let (tx, rx) = mpsc::channel();
         let mut results: Vec<String> = Vec::new();
 
-        // Tab and escape should be filtered, only 'a' survives
+        // Tab is now recognized as KeyMessage::Tab but ignored in enter mode
         if let Some(msg) = keycode_to_message(0x30, Some('\t')) {
             tx.send(msg).unwrap();
         }
@@ -855,8 +970,30 @@ mod tests {
         tx.send(KeyMessage::Enter).unwrap();
         drop(tx);
 
-        process_key_buffer(rx, |s| results.push(s));
+        process_key_buffer(rx, "enter", |s| results.push(s));
 
         assert_eq!(results, vec!["a"]);
+    }
+
+    #[test]
+    fn integration_tab_triggers_in_tab_mode() {
+        let (tx, rx) = mpsc::channel();
+        let mut results: Vec<String> = Vec::new();
+
+        // Simulate a scanner that sends URL chars followed by Tab
+        for c in "https://test.com".chars() {
+            if let Some(msg) = keycode_to_message(0x00, Some(c)) {
+                tx.send(msg).unwrap();
+            }
+        }
+        // Tab key (0x30)
+        if let Some(msg) = keycode_to_message(0x30, Some('\t')) {
+            tx.send(msg).unwrap();
+        }
+        drop(tx);
+
+        process_key_buffer(rx, "tab", |s| results.push(s));
+
+        assert_eq!(results, vec!["https://test.com"]);
     }
 }

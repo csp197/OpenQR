@@ -1,12 +1,11 @@
 mod commands;
 mod models;
 mod state;
+mod tray;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
 use state::AppState;
@@ -35,45 +34,11 @@ pub fn run() {
                 config: Arc::new(Mutex::new(config)),
                 data_dir: data_dir_str,
                 listener_active: Arc::new(AtomicBool::new(false)),
+                tray_pulse_active: Arc::new(AtomicBool::new(false)),
             };
 
             // Build system tray
-            let show_item =
-                MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("OpenQR")
-                .menu(&menu)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
+            let _tray = tray::build_tray(app)?;
 
             // Handle window close — hide to tray if configured
             let state_for_close = app_state.config.clone();
@@ -105,9 +70,11 @@ pub fn run() {
             commands::history::add_scan,
             commands::history::get_history,
             commands::history::clear_history,
+            commands::history::migrate_history,
             commands::scan::process_scan,
             commands::scan::start_global_listener,
             commands::scan::stop_global_listener,
+            tray::set_tray_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

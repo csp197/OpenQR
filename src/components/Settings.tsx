@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { X, FolderOpen } from "lucide-react";
 import { useState, useEffect } from "react";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -26,6 +27,7 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
   const [suffixMode, setSuffixMode] = useState(config.suffix.mode);
   const [suffixValue, setSuffixValue] = useState(config.suffix.value || "");
   const [closeToTray, setCloseToTray] = useState(config.close_to_tray);
+  const [historyStorage, setHistoryStorage] = useState(config.history_storage_method);
   const [newItem, setNewItem] = useState("");
 
   useEffect(() => {
@@ -39,6 +41,7 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
     setSuffixMode(config.suffix.mode);
     setSuffixValue(config.suffix.value || "");
     setCloseToTray(config.close_to_tray);
+    setHistoryStorage(config.history_storage_method);
   }, [config, isOpen]);
 
   if (!isOpen) return null;
@@ -73,7 +76,29 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Migrate history if storage method changed
+    if (historyStorage !== config.history_storage_method) {
+      try {
+        const count = await invoke<number>("migrate_history", {
+          from: config.history_storage_method,
+          to: historyStorage,
+        });
+        if (count > 0) {
+          toast.success(`Migrated ${count} history items to ${historyStorage === "json" ? "JSON" : "SQLite"}`, {
+            position: "bottom-left",
+            duration: 4000,
+          });
+        }
+      } catch (err: any) {
+        toast.error("Migration failed", {
+          description: err.toString(),
+          position: "bottom-left",
+          duration: 4000,
+        });
+      }
+    }
+
     onSave({
       ...config,
       allowlist,
@@ -90,6 +115,7 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
         value: suffixMode === "custom" ? suffixValue : undefined,
       },
       close_to_tray: closeToTray,
+      history_storage_method: historyStorage,
     });
     onClose();
   };
@@ -190,6 +216,28 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
               max={10000}
               className="w-full bg-zinc-100 dark:bg-zinc-900 p-2 rounded-xl text-sm outline-none border border-transparent focus:border-blue-500"
             />
+          </div>
+
+          <hr className="border-zinc-200 dark:border-white/5" />
+
+          {/* History Storage */}
+          <div className="space-y-2">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              History Storage
+            </h3>
+            <ToggleGroup
+              options={[
+                { value: "json" as const, label: "JSON File" },
+                { value: "sqlite" as const, label: "SQLite Database" },
+              ]}
+              value={historyStorage}
+              onChange={setHistoryStorage}
+            />
+            <p className="text-[10px] text-zinc-400">
+              {historyStorage === "json"
+                ? "Simple file-based storage (recommended)"
+                : "Database storage for large history"}
+            </p>
           </div>
 
           <hr className="border-zinc-200 dark:border-white/5" />
