@@ -2,6 +2,7 @@ mod commands;
 mod models;
 mod state;
 
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use tauri::menu::{Menu, MenuItem};
@@ -33,7 +34,7 @@ pub fn run() {
             let app_state = AppState {
                 config: Arc::new(Mutex::new(config)),
                 data_dir: data_dir_str,
-                listener_active: Arc::new(Mutex::new(false)),
+                listener_active: Arc::new(AtomicBool::new(false)),
             };
 
             // Build system tray
