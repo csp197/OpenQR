@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+    /* Your custom theme variables go here */
+}
+
+/* This is the magic for Tailwind v4 class-based dark mode */
+@variant dark (&:where(.dark, .dark *));
+
+/* Essential reset for Tauri windows to prevent scrolling/selection issues */
+:root {
+    user-select: none;
+    overflow: hidden;
+}

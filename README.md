@@ -1,73 +1,168 @@
-# OpenQR - QR Code Listener & URL Opener
+# OpenQR
 
-<p align="center">
-  <img src="assets/OpenQR_screenshot.png" alt="OpenQR_screenshot">
-</p>
+![screenshot](public/screenshot.png)
 
-OpenQR is a PyQt6 application for listening to QR code scans (via HID/keyboard wedge scanners) and automatically opening URLs, with advanced customization, history, and safety features.
+A free, open-source desktop app for scanning and creating QR codes. OpenQR works with hardware barcode/QR scanners (the kind that plug into your computer via USB) and gives you a safe, controlled environment to verify URLs before opening them.
 
-## Features
+Available for **Windows**, **macOS**, and **Linux**.
 
-- Start/Stop QR code listening with real-time status indicator
-- Automatically open scanned URLs in your default browser
-- Scan history with timestamps, copy, and clear options (persisted across sessions)
-- Domain management: allow/deny (whitelist/blacklist) lists for scanned URLs
-- Preferences dialog for customizing prefix/suffix, notification type, and history size
-- Upload and overlay a logo/image in the center of generated QR codes (with safe sizing and border)
-- Generate QR codes with custom foreground/background colors
-- Remove or reset logo overlay at any time
-- Blocked domain and invalid URL warnings
-- "Don't ask again for this domain" option in confirmation dialog
-- Help dialog with detailed usage instructions
-- All settings and history are persisted in your config directory
-- Comprehensive unit tests for listener, app logic, and QR code generation
+---
+
+## What It Does
+
+### Scanner Mode
+
+Plug in a USB QR/barcode scanner, click **Start Listening**, and scan away. OpenQR captures the scanner's input and:
+
+1. Checks the URL against your **allowlist** and **blocklist**
+2. Strips any configured prefix or suffix your scanner may add
+3. Shows you the verified domain before opening it
+4. Gives you 3 seconds to cancel before it opens in your browser
+5. Saves every scan to your local history
+
+This keeps you safe from malicious QR codes that redirect to phishing sites or other bad places.
+
+### Generator Mode
+
+Type or paste any URL and OpenQR generates a QR code on the spot. You can:
+
+- Pick custom foreground and background colors
+- Add your own logo in the center (it automatically carves out space so the code stays scannable)
+- Copy to clipboard with a clean white border
+- Download as a PNG file
+
+### Settings
+
+Everything is configurable:
+
+| Setting | What it does |
+|---|---|
+| **Scan Mode** | *Single* stops listening after one scan. *Continuous* keeps going. |
+| **Notifications** | Choose between toast popups or quiet status-bar-only updates. |
+| **Max History** | How many scans to keep (default 100). |
+| **Prefix / Suffix** | Strip characters your scanner adds before or after the URL. |
+| **Allowlist / Blocklist** | Control which domains are allowed or blocked. |
+| **Minimize to Tray** | Keep OpenQR running in the background when you close the window. |
+
+Settings are saved to `~/.openqr/config.json`. Scan history is stored in a local SQLite database at `~/.openqr/history.db`.
+
+---
+
+## Download
+
+Head to the [Releases](https://github.com/csp197/openqr/releases) page and grab the latest version for your platform:
+
+| Platform | File |
+|---|---|
+| Windows | `.exe` installer |
+| macOS | `.dmg` disk image |
+| Linux | `.deb` package or `.AppImage` |
+
+### macOS Note
+
+OpenQR uses global keyboard listening to capture scanner input even when the window is in the background. On macOS, you'll need to grant **Accessibility** permission the first time you start listening:
+
+**System Settings > Privacy & Security > Accessibility > OpenQR**
+
+---
+
+## Building From Source
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (stable toolchain)
+- [Bun](https://bun.sh/) (JavaScript runtime & package manager)
+- **Linux only:** system libraries for Tauri v2:
+  ```
+  sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+  ```
+
+### Setup
+
+```bash
+git clone https://github.com/csp197/openqr.git
+cd openqr
+bun install
+```
+
+### Development
+
+```bash
+bun run tauri dev
+```
+
+This starts the Vite dev server with hot reload and launches the Tauri window.
+
+### Production Build
+
+```bash
+bun run tauri build
+```
+
+Outputs platform-specific installers to `src-tauri/target/release/bundle/`.
+
+### Running Tests
+
+```bash
+# Rust tests (URL validation, config, history, prefix/suffix handling)
+cd src-tauri && cargo test
+
+# Frontend tests (component rendering, user interactions)
+bun run test
+```
+
+### Creating a Release
+
+Releases are built automatically by GitHub Actions when a version tag is pushed:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers builds for Windows, macOS, and Linux and creates a draft release with all artifacts.
+
+---
+
+## Project Structure
+
+```
+openqr/
+  src/                     # React frontend (TypeScript)
+    components/
+      Scanner.tsx          # QR scanning UI and history
+      Generator.tsx        # QR code creation with customization
+      Settings.tsx         # All app configuration
+      Header.tsx           # Navigation and theme toggle
+      Footer.tsx           # Status bar
+  src-tauri/               # Rust backend
+    src/
+      lib.rs               # App setup, tray icon, window management
+      state.rs             # Shared application state
+      commands/
+        url.rs             # URL validation against allow/blocklists
+        config.rs          # Load and save settings
+        history.rs         # SQLite scan history
+        scan.rs            # Input processing, prefix/suffix, global keyboard listener
+      models/
+        config.rs          # Config data structure
+        scan.rs            # Scan record data structure
+```
+
+---
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+Contributions are welcome. Fork the repo, create a branch, and open a pull request.
 
-### Local Development
+The codebase uses:
+- **Tauri v2** for the desktop shell
+- **React 19** with TypeScript for the UI
+- **Tailwind CSS v4** for styling
+- **Rust** for URL validation, scan processing, history storage, config management, global keyboard capture, and system tray
+- **Vitest** + **Testing Library** for frontend tests
+- **Cargo test** for Rust unit tests
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/openqr.git
-cd openqr
-```
+---
 
-2. Install dependencies:
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Usage
-
-Run the application:
-```bash
-make run
-```
-
-- Click the "Start Listening" button to begin detecting QR codes. When a URL is scanned, it will automatically open in your default browser (unless blocked or denied).
-- Use the sidebar for scan history, status, and quick access to preferences and help.
-- Access all settings and management dialogs from the menu bar.
-
-## Development
-
-This project uses Test-Driven Development (TDD) with pytest and pytest-qt.
-
-Run tests:
-```bash
-make test
-```
-
-
-## Attribution
-
-This project was developed with the assistance of [Cursor IDE](https://www.cursor.so/), an AI-powered IDE for modern Python development.
-
-The program icon was sourced from [iconarchive.com](https://www.iconarchive.com/show/ecommerce-business-icons-by-designcontest/bar-code-icon.html) and made possible from [Design Contest](https://www.designcontest.com/).
+<a target="_blank" href="https://icons8.com/icon/WDy6fnNnJEm0/qr-code">QR Code</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a>
