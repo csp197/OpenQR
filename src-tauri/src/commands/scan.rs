@@ -95,6 +95,7 @@ mod macos_listener {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::Sender;
     use std::sync::Arc;
+    use std::sync::Mutex;
 
     // ─── FFI type aliases ─────────────────────────────────────
     type CGEventTapProxy = *const c_void;
@@ -108,18 +109,11 @@ mod macos_listener {
     type UniChar = u16;
     type UniCharCount = usize;
 
-    // ─── Constants ────────────────────────────────────────────
-    // CGEventTapLocation::HID
     const K_CG_HID_EVENT_TAP: u32 = 0;
-    // kCGHeadInsertEventTap
     const K_CG_HEAD_INSERT_EVENT_TAP: u32 = 0;
-    // CGEventTapOptions::ListenOnly
     const K_CG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
-    // CGEventType values
     const K_CG_EVENT_KEY_DOWN: u64 = 10;
-    // EventField::KEYBOARD_EVENT_KEYCODE
     const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
-    // Event mask: only keyboard events (KeyDown + KeyUp + FlagsChanged)
     const KEYBOARD_EVENT_MASK: u64 = (1 << 10) | (1 << 11) | (1 << 12);
 
     // ─── FFI declarations ─────────────────────────────────────
@@ -144,13 +138,15 @@ mod macos_listener {
             order: CFIndex,
         ) -> CFRunLoopSourceRef;
         fn CFRunLoopGetCurrent() -> CFRunLoopRef;
-        fn CFRunLoopAddSource(
-            rl: CFRunLoopRef,
-            source: CFRunLoopSourceRef,
-            mode: CFRunLoopMode,
-        );
+        fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFRunLoopMode);
         fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
         fn CFRunLoopRun();
+
+        // NEW: Cleanup and stop declarations
+        fn CFRunLoopStop(rl: CFRunLoopRef);
+        fn CFMachPortInvalidate(port: CFMachPortRef);
+        fn CFRelease(cf: *const c_void);
+
         fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
         fn CGEventKeyboardGetUnicodeString(
             event: CGEventRef,
@@ -162,31 +158,24 @@ mod macos_listener {
         static kCFRunLoopCommonModes: CFRunLoopMode;
     }
 
-    /// Context passed to the CGEventTap callback via a global static.
-    /// We use a static rather than user_info because CGEventTapCreate's
-    /// user_info parameter is not reliably passed through on all macOS versions.
     struct ListenerContext {
         active: Arc<AtomicBool>,
         tx: Sender<KeyMessage>,
+        run_loop: CFRunLoopRef, // NEW: Track the run loop so we can stop it
     }
 
-    // Safety: ListenerContext is only accessed from one thread at a time:
-    // - Written in listen_keyboard() before CFRunLoopRun()
-    // - Read in raw_callback() which runs on the same thread (CFRunLoopGetCurrent)
-    // - Cleared after CFRunLoopRun() returns on the same thread
-    // We use Mutex for Rust's safety guarantees even though access is single-threaded.
-    use std::sync::Mutex;
+    // NEW: We must implement Send/Sync because CFRunLoopRef is a raw pointer (*const c_void)
+    unsafe impl Send for ListenerContext {}
+    unsafe impl Sync for ListenerContext {}
+
     static LISTENER_CTX: Mutex<Option<Box<ListenerContext>>> = Mutex::new(None);
 
-    /// Raw CGEventTap callback. This runs on the background thread (same thread
-    /// that called CFRunLoopRun). It must not panic or call thread-unsafe APIs.
     unsafe extern "C" fn raw_callback(
         _proxy: CGEventTapProxy,
         event_type: u64,
         cg_event: CGEventRef,
         _user_info: *mut c_void,
     ) -> CGEventRef {
-        // Only process KeyDown events
         if event_type != K_CG_EVENT_KEY_DOWN {
             return cg_event;
         }
@@ -206,9 +195,6 @@ mod macos_listener {
 
         let keycode = CGEventGetIntegerValueField(cg_event, K_CG_KEYBOARD_EVENT_KEYCODE);
 
-        // Extract unicode character from the event.
-        // CGEventKeyboardGetUnicodeString reads from the event object itself
-        // (thread-safe), unlike UCKeyTranslate which accesses global TIS state.
         let mut length: UniCharCount = 0;
         let mut buffer: [UniChar; 4] = [0; 4];
         CGEventKeyboardGetUnicodeString(cg_event, 4, &mut length, buffer.as_mut_ptr());
@@ -223,19 +209,20 @@ mod macos_listener {
             let _ = ctx.tx.send(msg);
         }
 
-        // Drop guard before returning
         drop(guard);
         cg_event
     }
 
-    /// Start the macOS keyboard listener. Blocks the calling thread.
-    pub fn listen_keyboard(
-        active: Arc<AtomicBool>,
-        tx: Sender<KeyMessage>,
-    ) -> Result<(), String> {
-        *LISTENER_CTX.lock().map_err(|e| e.to_string())? =
-            Some(Box::new(ListenerContext { active, tx }));
+    pub fn listen_keyboard(active: Arc<AtomicBool>, tx: Sender<KeyMessage>) -> Result<(), String> {
         unsafe {
+            // Grab the run loop for THIS thread immediately
+            let current_loop = CFRunLoopGetCurrent();
+
+            *LISTENER_CTX.lock().map_err(|e| e.to_string())? = Some(Box::new(ListenerContext {
+                active,
+                tx,
+                run_loop: current_loop,
+            }));
 
             let tap = CGEventTapCreate(
                 K_CG_HID_EVENT_TAP,
@@ -245,6 +232,7 @@ mod macos_listener {
                 raw_callback,
                 std::ptr::null_mut(),
             );
+
             if tap.is_null() {
                 let _ = LISTENER_CTX.lock().map(|mut g| *g = None);
                 return Err(
@@ -257,21 +245,36 @@ mod macos_listener {
             let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
             if source.is_null() {
                 let _ = LISTENER_CTX.lock().map(|mut g| *g = None);
+                CFRelease(tap);
                 return Err("Failed to create run loop source.".to_string());
             }
 
-            // Add source to THIS thread's run loop (not the main thread).
-            // CFRunLoopRun() below will then block and process events on this thread.
-            let current_loop = CFRunLoopGetCurrent();
             CFRunLoopAddSource(current_loop, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, true);
 
-            // Blocks until CFRunLoopStop or the tap is invalidated
+            // This blocks until CFRunLoopStop is called
             CFRunLoopRun();
+
+            // NEW: Run loop has been stopped. Invalidate the tap and free memory.
+            CFMachPortInvalidate(tap);
+            CFRelease(tap);
+            CFRelease(source);
         }
+
         // Clean up context after run loop exits
         let _ = LISTENER_CTX.lock().map(|mut g| *g = None);
         Ok(())
+    }
+
+    // NEW: Stop the run loop safely from another thread
+    pub fn stop_listener() {
+        if let Ok(guard) = LISTENER_CTX.lock() {
+            if let Some(ctx) = guard.as_ref() {
+                unsafe {
+                    CFRunLoopStop(ctx.run_loop);
+                }
+            }
+        }
     }
 }
 
@@ -283,7 +286,15 @@ mod fallback_listener {
     use rdev::{listen, Event, EventType, Key};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::Sender;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
+
+    // ─── Global State for rdev ───────────────────────────────────────────────
+    // rdev cannot be stopped once started. We track if the thread is spawned,
+    // and store the current active channel sender in a Mutex so we can
+    // redirect keystrokes to the latest Tauri command thread.
+    static RDEV_SPAWNED: AtomicBool = AtomicBool::new(false);
+    static LISTENER_TX: Mutex<Option<Sender<KeyMessage>>> = Mutex::new(None);
+    static LISTENER_ACTIVE: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
     fn key_to_char(key: &Key) -> Option<char> {
         match key {
@@ -356,51 +367,99 @@ mod fallback_listener {
             .or_else(|| key_to_char(key))
     }
 
-    pub fn listen_keyboard(
-        active: Arc<AtomicBool>,
-        tx: Sender<KeyMessage>,
-    ) -> Result<(), String> {
+    pub fn listen_keyboard(active: Arc<AtomicBool>, tx: Sender<KeyMessage>) -> Result<(), String> {
+        // 1. Update global pointers to the *new* channel and active state.
+        // NOTE: Assigning a new `tx` here drops the old `tx`. This causes your
+        // old processor thread's `rx.recv()` to fail, killing the old thread cleanly!
+        if let Ok(mut global_tx) = LISTENER_TX.lock() {
+            *global_tx = Some(tx);
+        }
+        if let Ok(mut global_active) = LISTENER_ACTIVE.lock() {
+            *global_active = Some(active);
+        }
+
+        // 2. If rdev is already hooked into the OS, we are done.
+        // Returning `Ok(())` kills the duplicate thread spawned by Tauri,
+        // leaving the original rdev thread running with our newly updated Mutex state.
+        if RDEV_SPAWNED.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+
+        // 3. First time startup: Block this thread forever with rdev.
         let callback = move |event: Event| {
-            if !active.load(Ordering::Relaxed) {
+            // Check if we are currently active
+            let is_active = if let Ok(guard) = LISTENER_ACTIVE.lock() {
+                guard
+                    .as_ref()
+                    .map(|a| a.load(Ordering::Relaxed))
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            if !is_active {
                 return;
             }
+
             if let EventType::KeyPress(key) = event.event_type {
-                match key {
-                    Key::Return | Key::KpReturn => {
-                        let _ = tx.send(KeyMessage::Enter);
-                    }
-                    Key::Tab => {
-                        let _ = tx.send(KeyMessage::Tab);
-                    }
-                    _ => {
-                        if let Some(c) = char_from_event(&event, &key) {
-                            let _ = tx.send(KeyMessage::Char(c));
+                let msg = match key {
+                    Key::Return | Key::KpReturn => Some(KeyMessage::Enter),
+                    Key::Tab => Some(KeyMessage::Tab),
+                    _ => char_from_event(&event, &key).map(KeyMessage::Char),
+                };
+
+                if let Some(m) = msg {
+                    // Send to whichever Tauri channel is currently active
+                    if let Ok(guard) = LISTENER_TX.lock() {
+                        if let Some(sender) = guard.as_ref() {
+                            let _ = sender.send(m);
                         }
                     }
                 }
             }
         };
 
-        listen(callback).map_err(|e| format!("Listener error: {:?}", e))
+        listen(callback).map_err(|e| {
+            RDEV_SPAWNED.store(false, Ordering::SeqCst);
+            format!("Listener error: {:?}", e)
+        })
+    }
+
+    pub fn stop_listener() {
+        // We drop the sender entirely. This guarantees the Tauri processor
+        // thread gets disconnected and dies gracefully immediately on stop.
+        if let Ok(mut global_tx) = LISTENER_TX.lock() {
+            *global_tx = None;
+        }
+        if let Ok(mut global_active) = LISTENER_ACTIVE.lock() {
+            *global_active = None;
+        }
     }
 }
 
 #[tauri::command]
 pub fn process_scan(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, AppState>,
     raw_input: String,
 ) -> Result<String, String> {
     let config = state.config.lock().map_err(|e| e.to_string())?.clone();
 
     let after_prefix = strip_prefix(&raw_input, &config.prefix);
-    let cleaned = strip_suffix(&after_prefix, &config.suffix).trim().to_string();
+    let cleaned = strip_suffix(&after_prefix, &config.suffix)
+        .trim()
+        .to_string();
 
     // Debug: emit raw buffer so frontend can see what was actually captured
-    let _ = app.emit("scan-debug", format!(
-        "raw={:?} cleaned={:?} len={}",
-        raw_input, cleaned, cleaned.len()
-    ));
+    // let _ = app.emit(
+    //     "scan-debug",
+    //     format!(
+    //         "raw={:?} cleaned={:?} len={}",
+    //         raw_input,
+    //         cleaned,
+    //         cleaned.len()
+    //     ),
+    // );
 
     let hostname = check_url(
         cleaned.clone(),
@@ -411,9 +470,7 @@ pub fn process_scan(
     let scan = ScanObject {
         id: uuid::Uuid::new_v4().to_string(),
         url: cleaned,
-        timestamp: chrono::Local::now()
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string(),
+        timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     };
     add_scan_internal(
         &state.data_dir,
@@ -426,10 +483,7 @@ pub fn process_scan(
 }
 
 #[tauri::command]
-pub fn start_global_listener(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub fn start_global_listener(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let active = state.listener_active.clone();
 
     if active.swap(true, Ordering::SeqCst) {
@@ -478,6 +532,13 @@ pub fn start_global_listener(
 #[tauri::command]
 pub fn stop_global_listener(state: State<'_, AppState>) -> Result<(), String> {
     state.listener_active.store(false, Ordering::SeqCst);
+
+    #[cfg(target_os = "macos")]
+    macos_listener::stop_listener();
+
+    #[cfg(not(target_os = "macos"))]
+    fallback_listener::stop_listener();
+
     Ok(())
 }
 
@@ -570,10 +631,7 @@ mod tests {
     #[test]
     fn strip_prefix_custom() {
         assert_eq!(
-            strip_prefix(
-                "SCAN:https://example.com",
-                &prefix("custom", Some("SCAN:"))
-            ),
+            strip_prefix("SCAN:https://example.com", &prefix("custom", Some("SCAN:"))),
             "https://example.com"
         );
     }
@@ -661,7 +719,10 @@ mod tests {
     #[test]
     fn keycode_return_ignores_unicode() {
         // Return should produce Enter regardless of unicode char
-        assert_eq!(keycode_to_message(0x24, Some('\n')), Some(KeyMessage::Enter));
+        assert_eq!(
+            keycode_to_message(0x24, Some('\n')),
+            Some(KeyMessage::Enter)
+        );
     }
 
     #[test]
@@ -944,7 +1005,8 @@ mod tests {
 
         // Shift down (no unicode), then 'A', then shift up (no unicode), then Enter
         keycode_to_message(0x38, None); // Shift — returns None, nothing sent
-        tx.send(keycode_to_message(0x00, Some('A')).unwrap()).unwrap();
+        tx.send(keycode_to_message(0x00, Some('A')).unwrap())
+            .unwrap();
         keycode_to_message(0x38, None); // Shift up
         tx.send(KeyMessage::Enter).unwrap();
         drop(tx);
@@ -963,7 +1025,8 @@ mod tests {
         if let Some(msg) = keycode_to_message(0x30, Some('\t')) {
             tx.send(msg).unwrap();
         }
-        tx.send(keycode_to_message(0x00, Some('a')).unwrap()).unwrap();
+        tx.send(keycode_to_message(0x00, Some('a')).unwrap())
+            .unwrap();
         if let Some(msg) = keycode_to_message(0x35, Some('\u{1b}')) {
             tx.send(msg).unwrap();
         }

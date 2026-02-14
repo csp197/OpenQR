@@ -165,14 +165,14 @@ function App() {
     });
 
     // Debug: show what the buffer actually captured
-    const unlistenDebug = listen<string>("scan-debug", (event) => {
-      console.log("[scan-debug]", event.payload);
-      toast.info("Debug", {
-        description: event.payload,
-        position: "bottom-left",
-        duration: 10000,
-      });
-    });
+    // const unlistenDebug = listen<string>("scan-debug", (event) => {
+    //   console.log("[scan-debug]", event.payload);
+    //   toast.info("Debug", {
+    //     description: event.payload,
+    //     position: "bottom-left",
+    //     duration: 10000,
+    //   });
+    // });
 
     // Listen for scan errors (e.g. rdev permission issues)
     const unlistenErr = listen<string>("scan-error", (event) => {
@@ -186,7 +186,7 @@ function App() {
 
     return () => {
       unlisten.then((fn) => fn());
-      unlistenDebug.then((fn) => fn());
+      // unlistenDebug.then((fn) => fn());
       unlistenErr.then((fn) => fn());
     };
   }, [config]);

@@ -1,5 +1,7 @@
 # OpenQR
 
+![screenshot](public/screenshot.png)
+
 A free, open-source desktop app for scanning and creating QR codes. OpenQR works with hardware barcode/QR scanners (the kind that plug into your computer via USB) and gives you a safe, controlled environment to verify URLs before opening them.
 
 Available for **Windows**, **macOS**, and **Linux**.
