@@ -278,9 +278,169 @@ mod macos_listener {
     }
 }
 
-// ─── Non-macOS: use rdev ─────────────────────────────────────────────────────
+// ─── Windows: Win32 low-level keyboard hook ──────────────────────────────────
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod windows_listener {
+    use super::KeyMessage;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::mpsc::Sender;
+    use std::sync::{Arc, Mutex};
+
+    use winapi::shared::minwindef::{DWORD, LPARAM, LRESULT, WPARAM};
+    use winapi::um::libloaderapi::GetModuleHandleW;
+    use winapi::um::processthreadsapi::GetCurrentThreadId;
+    use winapi::um::winuser::{
+        CallNextHookEx, GetKeyboardState, GetMessageW, PostThreadMessageW,
+        SetWindowsHookExW, ToUnicode, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT,
+    };
+
+    // Virtual key codes
+    const VK_RETURN: DWORD = 0x0D;
+    const VK_TAB: DWORD = 0x09;
+
+    static HOOK_HANDLE: Mutex<Option<isize>> = Mutex::new(None);
+    static THREAD_ID: AtomicU32 = AtomicU32::new(0);
+    static LISTENER_TX: Mutex<Option<Sender<KeyMessage>>> = Mutex::new(None);
+    static LISTENER_ACTIVE: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+    unsafe extern "system" fn hook_callback(
+        n_code: i32,
+        w_param: WPARAM,
+        l_param: LPARAM,
+    ) -> LRESULT {
+        if n_code >= 0 && w_param == WM_KEYDOWN as WPARAM {
+            let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
+            let vk = kb.vkCode;
+
+            // Check if listener is active
+            let is_active = LISTENER_ACTIVE
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|a| a.load(Ordering::Relaxed)))
+                .unwrap_or(false);
+
+            if is_active {
+                let msg = if vk == VK_RETURN {
+                    Some(KeyMessage::Enter)
+                } else if vk == VK_TAB {
+                    Some(KeyMessage::Tab)
+                } else {
+                    // Use ToUnicode to get the character
+                    let mut keyboard_state = [0u8; 256];
+                    GetKeyboardState(keyboard_state.as_mut_ptr());
+
+                    let mut buffer = [0u16; 4];
+                    let result = ToUnicode(
+                        vk,
+                        kb.scanCode,
+                        keyboard_state.as_ptr(),
+                        buffer.as_mut_ptr(),
+                        buffer.len() as i32,
+                        0,
+                    );
+
+                    if result == 1 {
+                        char::from_u32(buffer[0] as u32)
+                            .filter(|c| !c.is_control())
+                            .map(KeyMessage::Char)
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(m) = msg {
+                    if let Ok(guard) = LISTENER_TX.lock() {
+                        if let Some(sender) = guard.as_ref() {
+                            let _ = sender.send(m);
+                        }
+                    }
+                }
+            }
+        }
+
+        let hook = HOOK_HANDLE
+            .lock()
+            .ok()
+            .and_then(|g| *g)
+            .unwrap_or(0);
+        CallNextHookEx(hook as _, n_code, w_param, l_param)
+    }
+
+    pub fn listen_keyboard(active: Arc<AtomicBool>, tx: Sender<KeyMessage>) -> Result<(), String> {
+        // Update global channel and active state
+        if let Ok(mut global_tx) = LISTENER_TX.lock() {
+            *global_tx = Some(tx);
+        }
+        if let Ok(mut global_active) = LISTENER_ACTIVE.lock() {
+            *global_active = Some(active);
+        }
+
+        // If the hook is already installed, just swap the channel (same pattern as fallback)
+        if let Ok(guard) = HOOK_HANDLE.lock() {
+            if guard.is_some() {
+                return Ok(());
+            }
+        }
+
+        unsafe {
+            // Record this thread's ID so stop_listener can post WM_QUIT to it
+            THREAD_ID.store(GetCurrentThreadId(), Ordering::SeqCst);
+
+            let hook = SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                Some(hook_callback),
+                GetModuleHandleW(std::ptr::null()),
+                0,
+            );
+
+            if hook.is_null() {
+                return Err("Failed to install keyboard hook. Run as administrator or check permissions.".to_string());
+            }
+
+            if let Ok(mut guard) = HOOK_HANDLE.lock() {
+                *guard = Some(hook as isize);
+            }
+
+            // Message pump — blocks until WM_QUIT is posted
+            let mut msg: MSG = std::mem::zeroed();
+            while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
+                // No dispatch needed for low-level hooks
+            }
+
+            // Cleanup
+            UnhookWindowsHookEx(hook);
+            if let Ok(mut guard) = HOOK_HANDLE.lock() {
+                *guard = None;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn stop_listener() {
+        // Drop the sender so the processor thread dies
+        if let Ok(mut global_tx) = LISTENER_TX.lock() {
+            *global_tx = None;
+        }
+        if let Ok(mut global_active) = LISTENER_ACTIVE.lock() {
+            *global_active = None;
+        }
+
+        // Post WM_QUIT to break the message loop
+        let thread_id = THREAD_ID.load(Ordering::SeqCst);
+        if thread_id != 0 {
+            unsafe {
+                PostThreadMessageW(thread_id, WM_QUIT, 0, 0);
+            }
+        }
+    }
+}
+
+// ─── Linux: use rdev ─────────────────────────────────────────────────────────
+
+#[cfg(target_os = "linux")]
 mod fallback_listener {
     use super::KeyMessage;
     use rdev::{listen, Event, EventType, Key};
@@ -508,7 +668,10 @@ pub fn start_global_listener(app: AppHandle, state: State<'_, AppState>) -> Resu
         #[cfg(target_os = "macos")]
         let result = macos_listener::listen_keyboard(active_for_listener, tx);
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        let result = windows_listener::listen_keyboard(active_for_listener, tx);
+
+        #[cfg(target_os = "linux")]
         let result = fallback_listener::listen_keyboard(active_for_listener, tx);
 
         // ONLY force the active state to false if the listener crashed.
@@ -539,7 +702,10 @@ pub fn stop_global_listener(state: State<'_, AppState>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     macos_listener::stop_listener();
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    windows_listener::stop_listener();
+
+    #[cfg(target_os = "linux")]
     fallback_listener::stop_listener();
 
     Ok(())

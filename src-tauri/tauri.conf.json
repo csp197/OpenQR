@@ -24,6 +24,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "copyright": "Created by CSP",
+    "shortDescription": "QR Code Scanner & Generator",
+    "longDescription": "A desktop application for scanning QR codes via USB/HID barcode scanners and generating QR codes. Built with Tauri.",
+    "homepage": "https://github.com/csp197/OpenQR",
+    "category": "Utility",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
