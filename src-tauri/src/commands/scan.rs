@@ -279,6 +279,13 @@ mod macos_listener {
 }
 
 // ─── Windows: Win32 low-level keyboard hook ──────────────────────────────────
+//
+// We use SetWindowsHookExW(WH_KEYBOARD_LL) with a GetMessageW pump.
+// Key differences from the rdev fallback:
+//   - stop_listener() posts WM_QUIT to break the message loop (rdev can't be stopped)
+//   - We use GetAsyncKeyState to build keyboard state for ToUnicode, because
+//     GetKeyboardState returns stale data inside LL hook callbacks (the hook runs
+//     before the key message is dispatched to any thread's queue)
 
 #[cfg(target_os = "windows")]
 mod windows_listener {
@@ -291,26 +298,53 @@ mod windows_listener {
     use winapi::um::libloaderapi::GetModuleHandleW;
     use winapi::um::processthreadsapi::GetCurrentThreadId;
     use winapi::um::winuser::{
-        CallNextHookEx, GetKeyboardState, GetMessageW, PostThreadMessageW,
+        CallNextHookEx, GetAsyncKeyState, GetMessageW, PostThreadMessageW,
         SetWindowsHookExW, ToUnicode, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN,
     };
 
     // Virtual key codes
     const VK_RETURN: DWORD = 0x0D;
     const VK_TAB: DWORD = 0x09;
+    const VK_SHIFT: i32 = 0x10;
+    const VK_CONTROL: i32 = 0x11;
+    const VK_MENU: i32 = 0x12; // Alt
+    const VK_CAPITAL: i32 = 0x14; // Caps Lock
 
     static HOOK_HANDLE: Mutex<Option<isize>> = Mutex::new(None);
     static THREAD_ID: AtomicU32 = AtomicU32::new(0);
     static LISTENER_TX: Mutex<Option<Sender<KeyMessage>>> = Mutex::new(None);
     static LISTENER_ACTIVE: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
+    /// Build keyboard state array using GetAsyncKeyState (physical key state).
+    /// This works correctly inside LL hook callbacks unlike GetKeyboardState.
+    unsafe fn build_keyboard_state() -> [u8; 256] {
+        let mut state = [0u8; 256];
+        // Modifier keys: set high bit (0x80) if currently pressed
+        if GetAsyncKeyState(VK_SHIFT) < 0 {
+            state[VK_SHIFT as usize] = 0x80;
+        }
+        if GetAsyncKeyState(VK_CONTROL) < 0 {
+            state[VK_CONTROL as usize] = 0x80;
+        }
+        if GetAsyncKeyState(VK_MENU) < 0 {
+            state[VK_MENU as usize] = 0x80;
+        }
+        // Caps Lock: set low bit (0x01) if toggled on
+        if GetAsyncKeyState(VK_CAPITAL) & 0x0001 != 0 {
+            state[VK_CAPITAL as usize] = 0x01;
+        }
+        state
+    }
+
     unsafe extern "system" fn hook_callback(
         n_code: i32,
         w_param: WPARAM,
         l_param: LPARAM,
     ) -> LRESULT {
-        if n_code >= 0 && w_param == WM_KEYDOWN as WPARAM {
+        if n_code >= 0
+            && (w_param == WM_KEYDOWN as WPARAM || w_param == WM_SYSKEYDOWN as WPARAM)
+        {
             let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
             let vk = kb.vkCode;
 
@@ -327,9 +361,8 @@ mod windows_listener {
                 } else if vk == VK_TAB {
                     Some(KeyMessage::Tab)
                 } else {
-                    // Use ToUnicode to get the character
-                    let mut keyboard_state = [0u8; 256];
-                    GetKeyboardState(keyboard_state.as_mut_ptr());
+                    // Build keyboard state from physical key state (not thread queue state)
+                    let keyboard_state = build_keyboard_state();
 
                     let mut buffer = [0u16; 4];
                     let result = ToUnicode(
@@ -360,16 +393,13 @@ mod windows_listener {
             }
         }
 
-        let hook = HOOK_HANDLE
-            .lock()
-            .ok()
-            .and_then(|g| *g)
-            .unwrap_or(0);
-        CallNextHookEx(hook as _, n_code, w_param, l_param)
+        // First param is ignored for WH_KEYBOARD_LL, pass null
+        CallNextHookEx(std::ptr::null_mut(), n_code, w_param, l_param)
     }
 
     pub fn listen_keyboard(active: Arc<AtomicBool>, tx: Sender<KeyMessage>) -> Result<(), String> {
-        // Update global channel and active state
+        // Update global channel and active state.
+        // Assigning a new tx drops the old one, disconnecting the old processor thread.
         if let Ok(mut global_tx) = LISTENER_TX.lock() {
             *global_tx = Some(tx);
         }
@@ -396,31 +426,38 @@ mod windows_listener {
             );
 
             if hook.is_null() {
-                return Err("Failed to install keyboard hook. Run as administrator or check permissions.".to_string());
+                return Err(
+                    "Failed to install keyboard hook. \
+                     Check that the application has permission to monitor input."
+                        .to_string(),
+                );
             }
 
             if let Ok(mut guard) = HOOK_HANDLE.lock() {
                 *guard = Some(hook as isize);
             }
 
-            // Message pump — blocks until WM_QUIT is posted
+            // Message pump — blocks until WM_QUIT is posted.
+            // WH_KEYBOARD_LL callbacks are delivered via SendMessage to this thread,
+            // so the pump MUST be running for the hook to fire.
             let mut msg: MSG = std::mem::zeroed();
             while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
-                // No dispatch needed for low-level hooks
+                // No DispatchMessage needed — LL hook callbacks arrive via SendMessage
             }
 
-            // Cleanup
+            // Cleanup: unhook and reset state
             UnhookWindowsHookEx(hook);
             if let Ok(mut guard) = HOOK_HANDLE.lock() {
                 *guard = None;
             }
+            THREAD_ID.store(0, Ordering::SeqCst);
         }
 
         Ok(())
     }
 
     pub fn stop_listener() {
-        // Drop the sender so the processor thread dies
+        // Drop the sender so the processor thread's rx.recv() fails and it exits
         if let Ok(mut global_tx) = LISTENER_TX.lock() {
             *global_tx = None;
         }
@@ -428,7 +465,7 @@ mod windows_listener {
             *global_active = None;
         }
 
-        // Post WM_QUIT to break the message loop
+        // Post WM_QUIT to break the GetMessageW loop, which then unhooks and exits
         let thread_id = THREAD_ID.load(Ordering::SeqCst);
         if thread_id != 0 {
             unsafe {
