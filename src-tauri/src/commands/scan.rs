@@ -511,11 +511,14 @@ pub fn start_global_listener(app: AppHandle, state: State<'_, AppState>) -> Resu
         #[cfg(not(target_os = "macos"))]
         let result = fallback_listener::listen_keyboard(active_for_listener, tx);
 
+        // ONLY force the active state to false if the listener crashed.
+        // If it returned Ok(()), it was either intentionally stopped via
+        // stop_global_listener (which already sets it to false), or it
+        // returned early on Windows to prevent thread stacking.
         if let Err(error) = result {
             let _ = app_clone.emit("scan-error", error);
+            active_for_cleanup.store(false, Ordering::SeqCst);
         }
-
-        active_for_cleanup.store(false, Ordering::SeqCst);
     });
 
     // Processor thread — reads key messages and emits scan events to Tauri
