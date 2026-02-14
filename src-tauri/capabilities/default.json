@@ -51,8 +51,6 @@
           "path": ".openqr/**"
         }
       ]
-    },
-    "sql:default",
-    "sql:allow-execute"
+    }
   ]
 }

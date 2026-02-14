@@ -37,7 +37,7 @@ const Scanner = ({
     if (isPending) return "bg-blue-400 animate-pulse";
     if (isProcessing) return "bg-yellow-500 animate-pulse";
     if (isListening)
-      return "bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.4)]";
+      return "bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.4)]";
     return "bg-zinc-400";
   };
 

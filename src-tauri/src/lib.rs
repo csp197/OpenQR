@@ -1,78 +1,81 @@
-use serde::{Deserialize, Serialize};
-use std::fs;
+mod commands;
+mod models;
+mod state;
+mod tray;
 
-#[derive(Serialize, Deserialize, Clone)]
-struct ScanObject {
-    id: String,
-    url: String,
-    timestamp: String,
-}
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn check_url(
-    url: String,
-    allow_list: Vec<String>,
-    block_list: Vec<String>,
-) -> Result<String, String> {
-    let full_url = normalize_url(&url)?;
+use tauri::Manager;
 
-    let parsed = url::Url::parse(&full_url).map_err(|_| "Invalid URL format".to_string())?;
-
-    let domain = parsed
-        .domain()
-        .ok_or_else(|| "URL has no valid domain".to_string())?
-        .to_lowercase();
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "URL has no valid hostname".to_string())?
-        .to_lowercase();
-
-    let allow_list = normalize_list(allow_list);
-    let block_list = normalize_list(block_list);
-
-    if matches_list(&domain, &host, &block_list) {
-        return Err(format!("Domain '{}' is blocked.", domain));
-    }
-
-    if !allow_list.is_empty() && !matches_list(&domain, &host, &allow_list) {
-        return Err(format!("Domain '{}' is not in your allowlist.", domain));
-    }
-
-    Ok(host)
-}
-
-fn normalize_url(url: &str) -> Result<String, String> {
-    if url.contains("://") {
-        Ok(url.to_string())
-    } else {
-        Ok(format!("https://{}", url))
-    }
-}
-
-fn normalize_list(list: Vec<String>) -> Vec<String> {
-    list.into_iter().map(|s| s.to_lowercase()).collect()
-}
-
-fn matches_list(domain: &str, host: &str, list: &[String]) -> bool {
-    list.iter()
-        .any(|entry| domain.contains(entry) || host.contains(entry))
-}
-
-// TODO: Add a command to append history directly to a file in Rust
+use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![check_url])
+        .setup(|app| {
+            // Determine data directory
+            let home = app.path().home_dir().map_err(|e| e.to_string())?;
+            let data_dir = home.join(".openqr");
+            std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+
+            let data_dir_str = data_dir.to_string_lossy().to_string();
+
+            // Load config
+            let config = commands::config::load_config(&data_dir_str);
+
+            let app_state = AppState {
+                config: Arc::new(Mutex::new(config)),
+                data_dir: data_dir_str,
+                listener_active: Arc::new(AtomicBool::new(false)),
+                tray_pulse_active: Arc::new(AtomicBool::new(false)),
+            };
+
+            // Build system tray
+            let _tray = tray::build_tray(app)?;
+
+            // Handle window close — hide to tray if configured
+            let state_for_close = app_state.config.clone();
+            if let Some(main_window) = app.get_webview_window("main") {
+                let window_clone = main_window.clone();
+                main_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let close_to_tray = state_for_close
+                            .lock()
+                            .map(|c| c.close_to_tray)
+                            .unwrap_or(false);
+
+                        if close_to_tray {
+                            api.prevent_close();
+                            let _ = window_clone.hide();
+                        }
+                    }
+                });
+            }
+
+            app.manage(app_state);
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::url::check_url,
+            commands::config::get_config,
+            commands::config::save_config,
+            commands::history::add_scan,
+            commands::history::get_history,
+            commands::history::clear_history,
+            commands::history::migrate_history,
+            commands::scan::process_scan,
+            commands::scan::start_global_listener,
+            commands::scan::stop_global_listener,
+            tray::set_tray_state,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
