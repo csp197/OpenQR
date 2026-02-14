@@ -2683,6 +2683,7 @@ dependencies = [
  "tempfile",
  "url",
  "uuid",
+ "winapi",
 ]
 
 [[package]]
