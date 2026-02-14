@@ -98,7 +98,7 @@ function App() {
       // Load theme from LazyStore (stays in frontend)
       const home = await homeDir();
       const folderPath = await join(home, ".openqr");
-      const filePath = await join(folderPath, "settings.json");
+      const filePath = await join(folderPath, "config.json");
       storeRef.current = new LazyStore(filePath);
 
       const savedTheme = await storeRef.current.get<boolean>("dark-mode");
@@ -165,14 +165,14 @@ function App() {
     });
 
     // Debug: show what the buffer actually captured
-    // const unlistenDebug = listen<string>("scan-debug", (event) => {
-    //   console.log("[scan-debug]", event.payload);
-    //   toast.info("Debug", {
-    //     description: event.payload,
-    //     position: "bottom-left",
-    //     duration: 10000,
-    //   });
-    // });
+    const unlistenDebug = listen<string>("scan-debug", (event) => {
+      console.log("[scan-debug]", event.payload);
+      toast.info("Debug", {
+        description: event.payload,
+        position: "bottom-left",
+        duration: 10000,
+      });
+    });
 
     // Listen for scan errors (e.g. rdev permission issues)
     const unlistenErr = listen<string>("scan-error", (event) => {
@@ -186,7 +186,7 @@ function App() {
 
     return () => {
       unlisten.then((fn) => fn());
-      // unlistenDebug.then((fn) => fn());
+      unlistenDebug.then((fn) => fn());
       unlistenErr.then((fn) => fn());
     };
   }, [config]);

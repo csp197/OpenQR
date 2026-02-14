@@ -451,15 +451,15 @@ pub fn process_scan(
         .to_string();
 
     // Debug: emit raw buffer so frontend can see what was actually captured
-    // let _ = app.emit(
-    //     "scan-debug",
-    //     format!(
-    //         "raw={:?} cleaned={:?} len={}",
-    //         raw_input,
-    //         cleaned,
-    //         cleaned.len()
-    //     ),
-    // );
+    let _ = _app.emit(
+        "scan-debug",
+        format!(
+            "raw={:?} cleaned={:?} len={}",
+            raw_input,
+            cleaned,
+            cleaned.len()
+        ),
+    );
 
     let hostname = check_url(
         cleaned.clone(),
