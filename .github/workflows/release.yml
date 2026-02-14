@@ -1,9 +1,10 @@
-name: "Release Build (Bun)"
+name: "Pre-release Build of OpenQR"
 
 on:
   push:
     branches:
       - main
+      - v2/winfix # TODO: uncomment for later
 
   pull_request:
     branches:
@@ -54,7 +55,9 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
-          command: cd src-tauri && cargo test
+          command: |
+            cd src-tauri
+            cargo test
 
       - name: run frontend tests
         uses: nick-fields/retry@v3
@@ -113,6 +116,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "OpenQR v__VERSION__"
-          releaseBody: "Automated release via Bun and GitHub Actions."
+          releaseBody: "Automated release via GitHub Actions."
           releaseDraft: true
           prerelease: true
