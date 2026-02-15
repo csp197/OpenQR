@@ -301,9 +301,14 @@ mod windows_listener {
     static THREAD_ID: AtomicU32 = AtomicU32::new(0);
     static LISTENER_TX: Mutex<Option<Sender<KeyMessage>>> = Mutex::new(None);
     static LISTENER_ACTIVE: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+    static SHIFT_PRESSED: AtomicBool = AtomicBool::new(false);
 
     const VK_RETURN: u16 = 0x0D;
     const VK_TAB: u16 = 0x09;
+    const VK_SHIFT: u16 = 0x10;
+    const VK_LSHIFT: u16 = 0xA0;
+    const VK_RSHIFT: u16 = 0xA1;
+    const RI_KEY_BREAK: u16 = 0x0001;
 
     unsafe extern "system" fn wnd_proc(
         hwnd: HWND,
@@ -341,10 +346,12 @@ mod windows_listener {
                             let keyboard = raw.data.keyboard();
                             let vk = keyboard.VKey as u16;
 
-                            let is_keydown =
-                                keyboard.Message == 0x0100 || keyboard.Message == 0x0104;
+                            let is_keyup = (keyboard.Flags & RI_KEY_BREAK) != 0;
+                            let is_keydown = !is_keyup;
 
-                            if is_keydown {
+                            if vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT {
+                                SHIFT_PRESSED.store(is_keydown, Ordering::Relaxed);
+                            } else if is_keydown {
                                 let is_active = LISTENER_ACTIVE
                                     .lock()
                                     .ok()
@@ -382,16 +389,45 @@ mod windows_listener {
     }
 
     fn vk_to_char(vk: u16) -> Option<char> {
+        let shift = SHIFT_PRESSED.load(Ordering::Relaxed);
+
         match vk {
-            0x30..=0x39 => Some((vk as u8 as char)), // 0-9
-            0x41..=0x5A => Some((vk as u8 as char).to_ascii_lowercase()), // A-Z
-            0x6F => Some('/'),                       // numpad /
-            0xBF => Some('/'),                       // /
-            0xBE => Some('.'),                       // .
-            0xBA => Some(';'),
-            0xBD => Some('-'),
-            0xBC => Some(','),
-            0xC0 => Some('`'),
+            // Letters
+            0x41..=0x5A => {
+                let c = vk as u8 as char;
+                Some(if shift { c } else { c.to_ascii_lowercase() })
+            }
+
+            // Numbers
+            0x30..=0x39 => {
+                if shift {
+                    match vk {
+                        0x31 => Some('!'),
+                        0x32 => Some('@'),
+                        0x33 => Some('#'),
+                        0x34 => Some('$'),
+                        0x35 => Some('%'),
+                        0x36 => Some('^'),
+                        0x37 => Some('&'),
+                        0x38 => Some('*'),
+                        0x39 => Some('('),
+                        0x30 => Some(')'),
+                        _ => None,
+                    }
+                } else {
+                    Some(vk as u8 as char)
+                }
+            }
+
+            // Punctuation
+            0xBA => Some(if shift { ':' } else { ';' }), // ; :
+            0xBF => Some(if shift { '?' } else { '/' }), // / ?
+            0xBE => Some(if shift { '>' } else { '.' }), // . >
+            0xBC => Some(if shift { '<' } else { ',' }), // , <
+            0xBD => Some(if shift { '_' } else { '-' }), // - _
+            0xBB => Some(if shift { '+' } else { '=' }), // = +
+            0xC0 => Some(if shift { '~' } else { '`' }), // ` ~
+
             _ => None,
         }
     }
