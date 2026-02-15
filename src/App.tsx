@@ -25,7 +25,7 @@ type AppState =
   | { status: "ERROR"; message: string };
 
 type ScanObject = {
-  id: string;
+  id: number;
   url: string;
   timestamp: string;
 };
@@ -46,6 +46,7 @@ export type Config = {
     value?: string;
   };
   close_to_tray: boolean;
+  show_debug_toasts: boolean;
 };
 
 function App() {
@@ -166,12 +167,14 @@ function App() {
 
     // Debug: show what the buffer actually captured
     const unlistenDebug = listen<string>("scan-debug", (event) => {
-      console.log("[scan-debug]", event.payload);
-      toast.info("Debug", {
-        description: event.payload,
-        position: "bottom-left",
-        duration: 10000,
-      });
+      if (config?.show_debug_toasts) {
+        console.log("[scan-debug]", event.payload);
+        toast.info("Debug", {
+          description: event.payload,
+          position: "bottom-left",
+          duration: 10000,
+        });
+      }
     });
 
     // Listen for scan errors (e.g. rdev permission issues)

@@ -6,7 +6,7 @@ interface ScannerProps {
   isListening: boolean;
   setIsListening: (val: boolean) => void;
   status: string;
-  history: { id: string; url: string; timestamp: string }[];
+  history: { id: number; url: string; timestamp: string }[];
   onClear: () => void;
   mode: { status: string; url?: string };
   onStop: () => void;

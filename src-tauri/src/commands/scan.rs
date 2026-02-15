@@ -701,7 +701,7 @@ pub fn process_scan(
     )?;
 
     let scan = ScanObject {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: 0,
         url: cleaned,
         timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
     };
