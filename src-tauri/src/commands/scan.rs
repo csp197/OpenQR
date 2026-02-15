@@ -278,194 +278,194 @@ mod macos_listener {
     }
 }
 
-// ─── Windows: Win32 low-level keyboard hook ──────────────────────────────────
-//
-// We use SetWindowsHookExW(WH_KEYBOARD_LL) with a GetMessageW pump.
-// Key differences from the rdev fallback:
-//   - stop_listener() posts WM_QUIT to break the message loop (rdev can't be stopped)
-//   - We use GetAsyncKeyState to build keyboard state for ToUnicode, because
-//     GetKeyboardState returns stale data inside LL hook callbacks (the hook runs
-//     before the key message is dispatched to any thread's queue)
-
 #[cfg(target_os = "windows")]
 mod windows_listener {
     use super::KeyMessage;
+    use std::ptr;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::mpsc::Sender;
     use std::sync::{Arc, Mutex};
 
-    use winapi::shared::minwindef::{DWORD, LPARAM, LRESULT, WPARAM};
+    use winapi::shared::minwindef::{DWORD, LPARAM, LRESULT, UINT, WPARAM};
+    use winapi::shared::windef::HWND;
     use winapi::um::libloaderapi::GetModuleHandleW;
-    use winapi::um::processthreadsapi::GetCurrentThreadId;
     use winapi::um::winuser::{
-        CallNextHookEx, GetAsyncKeyState, GetMessageW, PostThreadMessageW,
-        SetWindowsHookExW, ToUnicode, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN,
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetRawInputData,
+        PostThreadMessageW, RegisterClassW, RegisterRawInputDevices, TranslateMessage, CS_HREDRAW,
+        CS_VREDRAW, CW_USEDEFAULT, MSG, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK,
+        RID_INPUT, RIM_TYPEKEYBOARD, WM_INPUT, WM_QUIT, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     };
 
-    // Virtual key codes
-    const VK_RETURN: DWORD = 0x0D;
-    const VK_TAB: DWORD = 0x09;
-    const VK_SHIFT: i32 = 0x10;
-    const VK_CONTROL: i32 = 0x11;
-    const VK_MENU: i32 = 0x12; // Alt
-    const VK_CAPITAL: i32 = 0x14; // Caps Lock
+    use winapi::um::winnt::LPCWSTR;
 
-    static HOOK_HANDLE: Mutex<Option<isize>> = Mutex::new(None);
     static THREAD_ID: AtomicU32 = AtomicU32::new(0);
     static LISTENER_TX: Mutex<Option<Sender<KeyMessage>>> = Mutex::new(None);
     static LISTENER_ACTIVE: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
-    /// Build keyboard state array using GetAsyncKeyState (physical key state).
-    /// This works correctly inside LL hook callbacks unlike GetKeyboardState.
-    unsafe fn build_keyboard_state() -> [u8; 256] {
-        let mut state = [0u8; 256];
-        // Modifier keys: set high bit (0x80) if currently pressed
-        if GetAsyncKeyState(VK_SHIFT) < 0 {
-            state[VK_SHIFT as usize] = 0x80;
-        }
-        if GetAsyncKeyState(VK_CONTROL) < 0 {
-            state[VK_CONTROL as usize] = 0x80;
-        }
-        if GetAsyncKeyState(VK_MENU) < 0 {
-            state[VK_MENU as usize] = 0x80;
-        }
-        // Caps Lock: set low bit (0x01) if toggled on
-        if GetAsyncKeyState(VK_CAPITAL) & 0x0001 != 0 {
-            state[VK_CAPITAL as usize] = 0x01;
-        }
-        state
-    }
+    const VK_RETURN: u16 = 0x0D;
+    const VK_TAB: u16 = 0x09;
 
-    unsafe extern "system" fn hook_callback(
-        n_code: i32,
+    unsafe extern "system" fn wnd_proc(
+        hwnd: HWND,
+        msg: UINT,
         w_param: WPARAM,
         l_param: LPARAM,
     ) -> LRESULT {
-        if n_code >= 0
-            && (w_param == WM_KEYDOWN as WPARAM || w_param == WM_SYSKEYDOWN as WPARAM)
-        {
-            let kb = &*(l_param as *const KBDLLHOOKSTRUCT);
-            let vk = kb.vkCode;
+        match msg {
+            WM_INPUT => {
+                let mut size: UINT = 0;
 
-            // Check if listener is active
-            let is_active = LISTENER_ACTIVE
-                .lock()
-                .ok()
-                .and_then(|g| g.as_ref().map(|a| a.load(Ordering::Relaxed)))
-                .unwrap_or(false);
+                // Get required buffer size
+                GetRawInputData(
+                    l_param as _,
+                    RID_INPUT,
+                    ptr::null_mut(),
+                    &mut size,
+                    std::mem::size_of::<RAWINPUTHEADER>() as UINT,
+                );
 
-            if is_active {
-                let msg = if vk == VK_RETURN {
-                    Some(KeyMessage::Enter)
-                } else if vk == VK_TAB {
-                    Some(KeyMessage::Tab)
-                } else {
-                    // Build keyboard state from physical key state (not thread queue state)
-                    let keyboard_state = build_keyboard_state();
+                if size > 0 {
+                    let mut buffer = vec![0u8; size as usize];
 
-                    let mut buffer = [0u16; 4];
-                    let result = ToUnicode(
-                        vk,
-                        kb.scanCode,
-                        keyboard_state.as_ptr(),
-                        buffer.as_mut_ptr(),
-                        buffer.len() as i32,
-                        0,
-                    );
+                    if GetRawInputData(
+                        l_param as _,
+                        RID_INPUT,
+                        buffer.as_mut_ptr() as _,
+                        &mut size,
+                        std::mem::size_of::<RAWINPUTHEADER>() as UINT,
+                    ) == size
+                    {
+                        let raw = &*(buffer.as_ptr() as *const RAWINPUT);
 
-                    if result == 1 {
-                        char::from_u32(buffer[0] as u32)
-                            .filter(|c| !c.is_control())
-                            .map(KeyMessage::Char)
-                    } else {
-                        None
-                    }
-                };
+                        if raw.header.dwType == RIM_TYPEKEYBOARD {
+                            let keyboard = raw.data.keyboard();
+                            let vk = keyboard.VKey as u16;
 
-                if let Some(m) = msg {
-                    if let Ok(guard) = LISTENER_TX.lock() {
-                        if let Some(sender) = guard.as_ref() {
-                            let _ = sender.send(m);
+                            let is_keydown =
+                                keyboard.Message == 0x0100 || keyboard.Message == 0x0104;
+
+                            if is_keydown {
+                                let is_active = LISTENER_ACTIVE
+                                    .lock()
+                                    .ok()
+                                    .and_then(|g| g.as_ref().map(|a| a.load(Ordering::Relaxed)))
+                                    .unwrap_or(false);
+
+                                if is_active {
+                                    let msg = if vk == VK_RETURN {
+                                        Some(KeyMessage::Enter)
+                                    } else if vk == VK_TAB {
+                                        Some(KeyMessage::Tab)
+                                    } else if let Some(c) = vk_to_char(vk) {
+                                        Some(KeyMessage::Char(c))
+                                    } else {
+                                        None
+                                    };
+
+                                    if let Some(m) = msg {
+                                        if let Ok(guard) = LISTENER_TX.lock() {
+                                            if let Some(sender) = guard.as_ref() {
+                                                let _ = sender.send(m);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
 
-        // First param is ignored for WH_KEYBOARD_LL, pass null
-        CallNextHookEx(std::ptr::null_mut(), n_code, w_param, l_param)
+                0
+            }
+            _ => DefWindowProcW(hwnd, msg, w_param, l_param),
+        }
+    }
+
+    fn vk_to_char(vk: u16) -> Option<char> {
+        match vk {
+            0x30..=0x39 => Some((vk as u8 as char)), // 0-9
+            0x41..=0x5A => Some((vk as u8 as char).to_ascii_lowercase()), // A-Z
+            0x6F => Some('/'),                       // numpad /
+            0xBF => Some('/'),                       // /
+            0xBE => Some('.'),                       // .
+            0xBA => Some(';'),
+            0xBD => Some('-'),
+            0xBC => Some(','),
+            0xC0 => Some('`'),
+            _ => None,
+        }
     }
 
     pub fn listen_keyboard(active: Arc<AtomicBool>, tx: Sender<KeyMessage>) -> Result<(), String> {
-        // Update global channel and active state.
-        // Assigning a new tx drops the old one, disconnecting the old processor thread.
         if let Ok(mut global_tx) = LISTENER_TX.lock() {
             *global_tx = Some(tx);
         }
+
         if let Ok(mut global_active) = LISTENER_ACTIVE.lock() {
             *global_active = Some(active);
         }
 
-        // If the hook is already installed, just swap the channel (same pattern as fallback)
-        if let Ok(guard) = HOOK_HANDLE.lock() {
-            if guard.is_some() {
-                return Ok(());
-            }
-        }
-
         unsafe {
-            // Record this thread's ID so stop_listener can post WM_QUIT to it
-            THREAD_ID.store(GetCurrentThreadId(), Ordering::SeqCst);
-
-            let hook = SetWindowsHookExW(
-                WH_KEYBOARD_LL,
-                Some(hook_callback),
-                GetModuleHandleW(std::ptr::null()),
-                0,
+            THREAD_ID.store(
+                winapi::um::processthreadsapi::GetCurrentThreadId(),
+                Ordering::SeqCst,
             );
 
-            if hook.is_null() {
-                return Err(
-                    "Failed to install keyboard hook. \
-                     Check that the application has permission to monitor input."
-                        .to_string(),
-                );
+            let class_name: Vec<u16> = "RawInputWindow\0".encode_utf16().collect();
+
+            let wc = WNDCLASSW {
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(wnd_proc),
+                hInstance: GetModuleHandleW(ptr::null()),
+                lpszClassName: class_name.as_ptr(),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hIcon: ptr::null_mut(),
+                hCursor: ptr::null_mut(),
+                hbrBackground: ptr::null_mut(),
+                lpszMenuName: ptr::null(),
+            };
+
+            RegisterClassW(&wc);
+
+            let hwnd = CreateWindowExW(
+                0,
+                class_name.as_ptr(),
+                class_name.as_ptr(),
+                WS_OVERLAPPEDWINDOW,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                GetModuleHandleW(ptr::null()),
+                ptr::null_mut(),
+            );
+
+            let rid = RAWINPUTDEVICE {
+                usUsagePage: 0x01, // Generic Desktop Controls
+                usUsage: 0x06,     // Keyboard
+                dwFlags: RIDEV_INPUTSINK,
+                hwndTarget: hwnd,
+            };
+
+            if RegisterRawInputDevices(&rid, 1, std::mem::size_of::<RAWINPUTDEVICE>() as UINT) == 0
+            {
+                return Err("Failed to register raw input device".to_string());
             }
 
-            if let Ok(mut guard) = HOOK_HANDLE.lock() {
-                *guard = Some(hook as isize);
-            }
-
-            // Message pump — blocks until WM_QUIT is posted.
-            // WH_KEYBOARD_LL callbacks are delivered via SendMessage to this thread,
-            // so the pump MUST be running for the hook to fire.
             let mut msg: MSG = std::mem::zeroed();
-            while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
-                // No DispatchMessage needed — LL hook callbacks arrive via SendMessage
+            while GetMessageW(&mut msg, ptr::null_mut(), 0, 0) > 0 {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
             }
-
-            // Cleanup: unhook and reset state
-            UnhookWindowsHookEx(hook);
-            if let Ok(mut guard) = HOOK_HANDLE.lock() {
-                *guard = None;
-            }
-            THREAD_ID.store(0, Ordering::SeqCst);
         }
 
         Ok(())
     }
 
     pub fn stop_listener() {
-        // Drop the sender so the processor thread's rx.recv() fails and it exits
-        if let Ok(mut global_tx) = LISTENER_TX.lock() {
-            *global_tx = None;
-        }
-        if let Ok(mut global_active) = LISTENER_ACTIVE.lock() {
-            *global_active = None;
-        }
-
-        // Post WM_QUIT to break the GetMessageW loop, which then unhooks and exits
         let thread_id = THREAD_ID.load(Ordering::SeqCst);
         if thread_id != 0 {
             unsafe {
