@@ -60,9 +60,10 @@ Head to the [Releases](https://github.com/csp197/openqr/releases) page and grab 
 
 ### macOS Note
 
-OpenQR uses global keyboard listening to capture scanner input even when the window is in the background. On macOS, you'll need to grant **Accessibility** permission the first time you start listening:
+OpenQR uses global keyboard listening to capture scanner input even when the window is in the background.
 
-**System Settings > Privacy & Security > Accessibility > OpenQR**
+- **macOS:** Grant **Accessibility** permission the first time you start listening: **System Settings > Privacy & Security > Accessibility > OpenQR**
+- **Windows:** No extra permissions needed. The app installs a low-level keyboard hook that works without administrator privileges.
 
 ---
 
@@ -113,14 +114,15 @@ bun run test
 
 ### Creating a Release
 
-Releases are built automatically by GitHub Actions when a version tag is pushed:
+Releases are built automatically by GitHub Actions when you push to `main`. The CI runs tests on all three platforms, then builds and uploads artifacts as a **draft release** tagged with the version from `tauri.conf.json`.
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+To publish a new version:
 
-This triggers builds for Windows, macOS, and Linux and creates a draft release with all artifacts.
+1. Bump the `version` in `src-tauri/tauri.conf.json`
+2. Merge to `main`
+3. Go to the [Releases](https://github.com/csp197/openqr/releases) page and publish the draft
+
+A pre-push hook warns you if the version tag already exists so you don't forget to bump it.
 
 ---
 
@@ -137,17 +139,23 @@ openqr/
       Footer.tsx           # Status bar
   src-tauri/               # Rust backend
     src/
-      lib.rs               # App setup, tray icon, window management
+      lib.rs               # App setup, plugin registration, window management
+      tray.rs              # System tray icon with status dot overlay
       state.rs             # Shared application state
       commands/
         url.rs             # URL validation against allow/blocklists
         config.rs          # Load and save settings
         history.rs         # SQLite scan history
-        scan.rs            # Input processing, prefix/suffix, global keyboard listener
+        scan.rs            # Global keyboard listener (per-platform), input processing
       models/
         config.rs          # Config data structure
         scan.rs            # Scan record data structure
 ```
+
+The keyboard listener has platform-specific implementations:
+- **macOS** — `CGEventTap` with `CGEventKeyboardGetUnicodeString` (thread-safe, avoids rdev's `UCKeyTranslate` crash)
+- **Windows** — `SetWindowsHookExW(WH_KEYBOARD_LL)` with a `GetMessageW` pump; stoppable via `PostThreadMessageW(WM_QUIT)`
+- **Linux** — `rdev` crate (fallback)
 
 ---
 
