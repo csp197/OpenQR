@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { X, FolderOpen } from "lucide-react";
 import { useState, useEffect } from "react";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -27,8 +28,14 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
   const [suffixMode, setSuffixMode] = useState(config.suffix.mode);
   const [suffixValue, setSuffixValue] = useState(config.suffix.value || "");
   const [closeToTray, setCloseToTray] = useState(config.close_to_tray);
+  const [showDebugToasts, setShowDebugToasts] = useState(config.show_debug_toasts);
   const [historyStorage, setHistoryStorage] = useState(config.history_storage_method);
   const [newItem, setNewItem] = useState("");
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setAllowlist(config.allowlist);
@@ -41,6 +48,7 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
     setSuffixMode(config.suffix.mode);
     setSuffixValue(config.suffix.value || "");
     setCloseToTray(config.close_to_tray);
+    setShowDebugToasts(config.show_debug_toasts);
     setHistoryStorage(config.history_storage_method);
   }, [config, isOpen]);
 
@@ -115,6 +123,7 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
         value: suffixMode === "custom" ? suffixValue : undefined,
       },
       close_to_tray: closeToTray,
+      show_debug_toasts: showDebugToasts,
       history_storage_method: historyStorage,
     });
     onClose();
@@ -328,6 +337,32 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
 
           <hr className="border-zinc-200 dark:border-white/5" />
 
+          {/* Debug Toasts */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                Debug Toasts
+              </h3>
+              <p className="text-[10px] text-zinc-400 mt-1">
+                Show debug info toasts when scanning
+              </p>
+            </div>
+            <button
+              onClick={() => setShowDebugToasts(!showDebugToasts)}
+              className={`relative w-10 h-6 rounded-full transition-colors ${
+                showDebugToasts ? "bg-blue-500" : "bg-zinc-300 dark:bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${
+                  showDebugToasts ? "translate-x-4" : ""
+                }`}
+              />
+            </button>
+          </div>
+
+          <hr className="border-zinc-200 dark:border-white/5" />
+
           {/* Allowlist / Blocklist */}
           <div className="space-y-4">
             <div className="flex gap-2">
@@ -385,6 +420,12 @@ const Settings = ({ isOpen, onClose, config, onSave }: SettingsProps) => {
             <FolderOpen size={14} />
             Open config folder
           </button>
+
+          {version && (
+            <p className="text-center text-[10px] text-zinc-400">
+              v{version}
+            </p>
+          )}
         </div>
       </div>
     </div>

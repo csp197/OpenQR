@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanObject {
-    pub id: String,
+    #[serde(default)]
+    pub id: i64,
     pub url: String,
     pub timestamp: String,
 }

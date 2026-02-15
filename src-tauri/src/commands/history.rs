@@ -22,8 +22,8 @@ fn open_db(data_dir: &str) -> Result<Connection, String> {
     let path = db_path(data_dir);
     let conn = Connection::open(&path).map_err(|e| e.to_string())?;
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS scan_history (
-            id TEXT PRIMARY KEY,
+        "CREATE TABLE IF NOT EXISTS history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT NOT NULL,
             timestamp TEXT NOT NULL
         )",
@@ -36,14 +36,14 @@ fn open_db(data_dir: &str) -> Result<Connection, String> {
 fn add_scan_sqlite(data_dir: &str, max_items: u32, scan: &ScanObject) -> Result<(), String> {
     let conn = open_db(data_dir)?;
     conn.execute(
-        "INSERT INTO scan_history (id, url, timestamp) VALUES (?1, ?2, ?3)",
-        [&scan.id, &scan.url, &scan.timestamp],
+        "INSERT INTO history (url, timestamp) VALUES (?1, ?2)",
+        [&scan.url, &scan.timestamp],
     )
     .map_err(|e| e.to_string())?;
 
     conn.execute(
-        "DELETE FROM scan_history WHERE id NOT IN (
-            SELECT id FROM scan_history ORDER BY timestamp DESC LIMIT ?1
+        "DELETE FROM history WHERE id NOT IN (
+            SELECT id FROM history ORDER BY timestamp DESC LIMIT ?1
         )",
         [max_items],
     )
@@ -55,7 +55,7 @@ fn add_scan_sqlite(data_dir: &str, max_items: u32, scan: &ScanObject) -> Result<
 fn get_history_sqlite(data_dir: &str, max_items: u32) -> Result<Vec<ScanObject>, String> {
     let conn = open_db(data_dir)?;
     let mut stmt = conn
-        .prepare("SELECT id, url, timestamp FROM scan_history ORDER BY timestamp DESC LIMIT ?1")
+        .prepare("SELECT id, url, timestamp FROM history ORDER BY timestamp DESC LIMIT ?1")
         .map_err(|e| e.to_string())?;
 
     let results = stmt
@@ -75,7 +75,7 @@ fn get_history_sqlite(data_dir: &str, max_items: u32) -> Result<Vec<ScanObject>,
 
 fn clear_history_sqlite(data_dir: &str) -> Result<(), String> {
     let conn = open_db(data_dir)?;
-    conn.execute("DELETE FROM scan_history", [])
+    conn.execute("DELETE FROM history", [])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -109,7 +109,15 @@ fn add_scan_json(data_dir: &str, max_items: u32, scan: &ScanObject) -> Result<()
 
 fn get_history_json(data_dir: &str, max_items: u32) -> Result<Vec<ScanObject>, String> {
     let history = read_json_history(data_dir)?;
-    Ok(history.into_iter().take(max_items as usize).collect())
+    Ok(history
+        .into_iter()
+        .take(max_items as usize)
+        .enumerate()
+        .map(|(i, mut scan)| {
+            scan.id = i as i64;
+            scan
+        })
+        .collect())
 }
 
 fn clear_history_json(data_dir: &str) -> Result<(), String> {
@@ -134,7 +142,10 @@ pub fn add_scan_internal(
 pub fn add_scan(state: State<'_, AppState>, scan: ScanObject) -> Result<(), String> {
     let (max, method) = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
-        (config.max_history_items, config.history_storage_method.clone())
+        (
+            config.max_history_items,
+            config.history_storage_method.clone(),
+        )
     };
     add_scan_internal(&state.data_dir, max, &scan, &method)
 }
@@ -143,7 +154,10 @@ pub fn add_scan(state: State<'_, AppState>, scan: ScanObject) -> Result<(), Stri
 pub fn get_history(state: State<'_, AppState>) -> Result<Vec<ScanObject>, String> {
     let (max, method) = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
-        (config.max_history_items, config.history_storage_method.clone())
+        (
+            config.max_history_items,
+            config.history_storage_method.clone(),
+        )
     };
     match method.as_str() {
         "sqlite" => get_history_sqlite(&state.data_dir, max),
@@ -164,7 +178,11 @@ pub fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn migrate_history(state: State<'_, AppState>, from: String, to: String) -> Result<u32, String> {
+pub fn migrate_history(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<u32, String> {
     let max = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
         config.max_history_items
@@ -214,11 +232,13 @@ pub fn clear_history_internal(data_dir: &str, storage_method: &str) -> Result<()
 
 #[cfg(test)]
 mod tests {
+    // use crate::models::scan;
+
     use super::*;
 
-    fn make_scan(id: &str, url: &str, ts: &str) -> ScanObject {
+    fn make_scan(url: &str, ts: &str) -> ScanObject {
         ScanObject {
-            id: id.to_string(),
+            id: 0,
             url: url.to_string(),
             timestamp: ts.to_string(),
         }
@@ -230,8 +250,7 @@ mod tests {
     fn sqlite_add_and_get() {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path().to_string_lossy().to_string();
-
-        let scan = make_scan("1", "https://example.com", "2024-01-01 00:00:00");
+        let scan = make_scan("https://example.com", "2024-01-01 00:00:00");
         add_scan_internal(&data_dir, 100, &scan, "sqlite").unwrap();
 
         let history = get_history_internal(&data_dir, 100, "sqlite").unwrap();
@@ -246,7 +265,6 @@ mod tests {
 
         for i in 0..10 {
             let scan = make_scan(
-                &format!("id-{}", i),
                 &format!("https://example{}.com", i),
                 &format!("2024-01-01 00:00:{:02}", i),
             );
@@ -262,7 +280,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path().to_string_lossy().to_string();
 
-        let scan = make_scan("1", "https://example.com", "2024-01-01 00:00:00");
+        let scan = make_scan("https://example.com", "2024-01-01 00:00:00");
         add_scan_internal(&data_dir, 100, &scan, "sqlite").unwrap();
 
         clear_history_internal(&data_dir, "sqlite").unwrap();
@@ -288,14 +306,15 @@ mod tests {
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("1", "https://old.com", "2024-01-01 00:00:00"),
+            &make_scan("https://old.com", "2024-01-01 00:00:00"),
             "sqlite",
         )
         .unwrap();
+
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("2", "https://new.com", "2024-06-01 00:00:00"),
+            &make_scan("https://new.com", "2024-06-01 00:00:00"),
             "sqlite",
         )
         .unwrap();
@@ -312,7 +331,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path().to_string_lossy().to_string();
 
-        let scan = make_scan("1", "https://example.com", "2024-01-01 00:00:00");
+        let scan = make_scan("https://example.com", "2024-01-01 00:00:00");
         add_scan_internal(&data_dir, 100, &scan, "json").unwrap();
 
         let history = get_history_internal(&data_dir, 100, "json").unwrap();
@@ -327,7 +346,6 @@ mod tests {
 
         for i in 0..10 {
             let scan = make_scan(
-                &format!("id-{}", i),
                 &format!("https://example{}.com", i),
                 &format!("2024-01-01 00:00:{:02}", i),
             );
@@ -343,7 +361,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path().to_string_lossy().to_string();
 
-        let scan = make_scan("1", "https://example.com", "2024-01-01 00:00:00");
+        let scan = make_scan("https://example.com", "2024-01-01 00:00:00");
         add_scan_internal(&data_dir, 100, &scan, "json").unwrap();
 
         clear_history_internal(&data_dir, "json").unwrap();
@@ -369,14 +387,15 @@ mod tests {
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("1", "https://first.com", "2024-01-01 00:00:00"),
+            &make_scan("https://first.com", "2024-01-01 00:00:00"),
             "json",
         )
         .unwrap();
+
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("2", "https://second.com", "2024-06-01 00:00:00"),
+            &make_scan("https://second.com", "2024-06-01 00:00:00"),
             "json",
         )
         .unwrap();
@@ -398,14 +417,15 @@ mod tests {
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("1", "https://a.com", "2024-01-01 00:00:00"),
+            &make_scan("https://a.com", "2024-01-01 00:00:00"),
             "json",
         )
         .unwrap();
+
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("2", "https://b.com", "2024-01-02 00:00:00"),
+            &make_scan("https://b.com", "2024-01-02 00:00:00"),
             "json",
         )
         .unwrap();
@@ -430,14 +450,15 @@ mod tests {
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("1", "https://a.com", "2024-01-01 00:00:00"),
+            &make_scan("https://a.com", "2024-01-01 00:00:00"),
             "sqlite",
         )
         .unwrap();
+
         add_scan_internal(
             &data_dir,
             100,
-            &make_scan("2", "https://b.com", "2024-01-02 00:00:00"),
+            &make_scan("https://b.com", "2024-01-02 00:00:00"),
             "sqlite",
         )
         .unwrap();

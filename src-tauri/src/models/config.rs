@@ -26,6 +26,8 @@ pub struct Config {
     pub suffix: SuffixConfig,
     #[serde(default)]
     pub close_to_tray: bool,
+    #[serde(default)]
+    pub show_debug_toasts: bool,
 }
 
 impl Default for Config {
@@ -46,6 +48,7 @@ impl Default for Config {
                 value: None,
             },
             close_to_tray: false,
+            show_debug_toasts: false,
         }
     }
 }
@@ -61,6 +64,7 @@ mod tests {
         assert_eq!(config.scan_mode, "single");
         assert_eq!(config.notification_type, "toast");
         assert!(!config.close_to_tray);
+        assert!(!config.show_debug_toasts);
         assert!(config.allowlist.is_empty());
         assert!(config.blocklist.is_empty());
         assert_eq!(config.prefix.mode, "none");
