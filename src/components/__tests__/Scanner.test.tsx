@@ -6,7 +6,7 @@ const defaultProps = {
   isListening: false,
   setIsListening: vi.fn(),
   status: "NOT Listening",
-  history: [] as { id: string; url: string; timestamp: string }[],
+  history: [] as { id: number; url: string; timestamp: string }[],
   onClear: vi.fn(),
   mode: { status: "IDLE" },
   onStop: vi.fn(),
@@ -37,7 +37,7 @@ describe("Scanner", () => {
 
   it("renders history items", () => {
     const history = [
-      { id: "1", url: "https://example.com", timestamp: "2024-01-01" },
+      { id: 1, url: "https://example.com", timestamp: "2024-01-01" },
     ];
     render(<Scanner {...defaultProps} history={history} />);
     expect(screen.getByText("https://example.com")).toBeInTheDocument();
@@ -73,7 +73,7 @@ describe("Scanner", () => {
 
   it("shows Copy All and Clear when history exists", () => {
     const history = [
-      { id: "1", url: "https://example.com", timestamp: "2024-01-01" },
+      { id: 1, url: "https://example.com", timestamp: "2024-01-01" },
     ];
     render(<Scanner {...defaultProps} history={history} />);
     expect(screen.getByText("Copy All")).toBeInTheDocument();
