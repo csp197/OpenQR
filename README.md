@@ -44,7 +44,7 @@ Everything is configurable:
 | **Allowlist / Blocklist** | Control which domains are allowed or blocked. |
 | **Minimize to Tray** | Keep OpenQR running in the background when you close the window. |
 
-Settings are saved to `~/.openqr/config.json`. Scan history is stored in a local SQLite database at `~/.openqr/history.db`.
+Settings are saved to `~/.openqr/config.json`. Scan history is stored in the `history` table in a local SQLite database at `~/.openqr/history.db`.
 
 ---
 
