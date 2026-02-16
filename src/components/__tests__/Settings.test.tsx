@@ -13,6 +13,7 @@ const defaultConfig: Config = {
   prefix: { mode: "none" },
   suffix: { mode: "enter" },
   close_to_tray: false,
+  show_debug_toasts: false,
 };
 
 describe("Settings", () => {
