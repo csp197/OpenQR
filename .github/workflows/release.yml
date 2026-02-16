@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - v2/winfix # TODO: uncomment for later
 
   pull_request:
     branches:
