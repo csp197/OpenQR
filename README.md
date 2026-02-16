@@ -18,7 +18,7 @@ Plug in a USB QR/barcode scanner, click **Start Listening**, and scan away. Open
 2. Strips any configured prefix or suffix your scanner may add
 3. Shows you the verified domain before opening it
 4. Gives you 3 seconds to cancel before it opens in your browser
-5. Saves every scan to your local history
+5. Saves every scan to your local history with an incremental ID
 
 This keeps you safe from malicious QR codes that redirect to phishing sites or other bad places.
 
@@ -40,11 +40,13 @@ Everything is configurable:
 | **Scan Mode** | *Single* stops listening after one scan. *Continuous* keeps going. |
 | **Notifications** | Choose between toast popups or quiet status-bar-only updates. |
 | **Max History** | How many scans to keep (default 100). |
+| **History Storage** | Choose between JSON file or SQLite database. Switching migrates existing history automatically. |
 | **Prefix / Suffix** | Strip characters your scanner adds before or after the URL. |
-| **Allowlist / Blocklist** | Control which domains are allowed or blocked. |
 | **Minimize to Tray** | Keep OpenQR running in the background when you close the window. |
+| **Debug Toasts** | Show or hide debug info toasts when scanning (off by default). |
+| **Allowlist / Blocklist** | Control which domains are allowed or blocked. |
 
-Settings are saved to `~/.openqr/config.json`. Scan history is stored in the `history` table in a local SQLite database at `~/.openqr/history.db`.
+Settings are saved to `~/.openqr/config.json`. Scan history is stored either as a JSON file (`~/.openqr/history.json`) or in a local SQLite database (`~/.openqr/history.db`), depending on your chosen storage method.
 
 ---
 
@@ -54,16 +56,17 @@ Head to the [Releases](https://github.com/csp197/openqr/releases) page and grab 
 
 | Platform | File |
 |---|---|
-| Windows | `.exe` installer |
+| Windows | `.exe` installer or `.msi` installer |
 | macOS | `.dmg` disk image |
 | Linux | `.deb` package or `.AppImage` |
 
-### macOS Note
+### Platform Notes
 
 OpenQR uses global keyboard listening to capture scanner input even when the window is in the background.
 
 - **macOS:** Grant **Accessibility** permission the first time you start listening: **System Settings > Privacy & Security > Accessibility > OpenQR**
-- **Windows:** No extra permissions needed. The app installs a low-level keyboard hook that works without administrator privileges.
+- **Windows:** No extra permissions needed. The app registers for Raw Input events which work without administrator privileges.
+- **Linux:** May require input group membership or similar permissions depending on your distribution.
 
 ---
 
@@ -118,7 +121,7 @@ Releases are built automatically by GitHub Actions when you push to `main`. The 
 
 To publish a new version:
 
-1. Bump the `version` in `src-tauri/tauri.conf.json`
+1. Bump the `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `package.json`
 2. Merge to `main`
 3. Go to the [Releases](https://github.com/csp197/openqr/releases) page and publish the draft
 
@@ -137,6 +140,7 @@ openqr/
       Settings.tsx         # All app configuration
       Header.tsx           # Navigation and theme toggle
       Footer.tsx           # Status bar
+      ListSection.tsx      # Reusable allowlist/blocklist component
   src-tauri/               # Rust backend
     src/
       lib.rs               # App setup, plugin registration, window management
@@ -145,7 +149,7 @@ openqr/
       commands/
         url.rs             # URL validation against allow/blocklists
         config.rs          # Load and save settings
-        history.rs         # SQLite scan history
+        history.rs         # Scan history (SQLite and JSON backends)
         scan.rs            # Global keyboard listener (per-platform), input processing
       models/
         config.rs          # Config data structure
@@ -154,7 +158,7 @@ openqr/
 
 The keyboard listener has platform-specific implementations:
 - **macOS** — `CGEventTap` with `CGEventKeyboardGetUnicodeString` (thread-safe, avoids rdev's `UCKeyTranslate` crash)
-- **Windows** — `SetWindowsHookExW(WH_KEYBOARD_LL)` with a `GetMessageW` pump; stoppable via `PostThreadMessageW(WM_QUIT)`
+- **Windows** — Raw Input via `RegisterRawInputDevices` with a hidden message window; stoppable via `PostThreadMessageW(WM_QUIT)`
 - **Linux** — `rdev` crate (fallback)
 
 ---
@@ -163,14 +167,14 @@ The keyboard listener has platform-specific implementations:
 
 Contributions are welcome. Fork the repo, create a branch, and open a pull request.
 
-The codebase uses:
+The codebase was built using:
 - **Tauri v2** for the desktop shell
 - **React 19** with TypeScript for the UI
 - **Tailwind CSS v4** for styling
 - **Rust** for URL validation, scan processing, history storage, config management, global keyboard capture, and system tray
 - **Vitest** + **Testing Library** for frontend tests
 - **Cargo test** for Rust unit tests
-
+- **Claude Code** for GenAI assistance
 ---
 
 <a target="_blank" href="https://icons8.com/icon/WDy6fnNnJEm0/qr-code">QR Code</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a>
