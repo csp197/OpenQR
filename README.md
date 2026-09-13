@@ -14,11 +14,11 @@ Available for **Windows**, **macOS**, and **Linux**.
 
 Plug in a USB QR/barcode scanner, click **Start Listening**, and scan away. OpenQR captures the scanner's input and:
 
-1. Checks the URL against your **allowlist** and **blocklist**
-2. Strips any configured prefix or suffix your scanner may add
-3. Shows you the verified domain before opening it
-4. Gives you 3 seconds to cancel before it opens in your browser
-5. Saves every scan to your local history with an incremental ID
+1. Only ever opens **http/https** links. Anything else (`mailto:`, `WIFI:`, `tel:`, plain text, ...) is rejected with "This QR code isn't a web link" instead of being guessed at.
+2. Checks the URL's host against your **allowlist** and **blocklist**. Matching is exact-or-subdomain — an entry for `example.com` covers `sub.example.com`, but never a lookalike like `example.com.example.net`.
+3. Strips any configured prefix or suffix your scanner may add
+4. Flags anything risky before opening it: not-HTTPS, a bare IP address, punycode, a known link shortener, or a link with hidden login info. If there are no warnings, you get a 3-second countdown to cancel; if there are, you have to click "Open anyway".
+5. Saves every scan (the checked, normalized URL) to your local history with an incremental ID
 
 This keeps you safe from malicious QR codes that redirect to phishing sites or other bad places.
 
@@ -64,7 +64,7 @@ Head to the [Releases](https://github.com/csp197/openqr/releases) page and grab 
 
 OpenQR uses global keyboard listening to capture scanner input even when the window is in the background.
 
-- **macOS:** Grant **Accessibility** permission the first time you start listening: **System Settings > Privacy & Security > Accessibility > OpenQR**
+- **macOS:** Grant **Input Monitoring** permission the first time you start listening: **System Settings > Privacy & Security > Input Monitoring > OpenQR**. If it's not granted, OpenQR shows a banner with a button that opens that settings pane directly; you may need to quit and reopen the app afterwards.
 - **Windows:** No extra permissions needed. The app registers for Raw Input events which work without administrator privileges.
 - **Linux:** May require input group membership or similar permissions depending on your distribution.
 
