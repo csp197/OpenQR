@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rusqlite::Connection;
 use tauri::State;
@@ -43,7 +44,7 @@ fn add_scan_sqlite(data_dir: &str, max_items: u32, scan: &ScanObject) -> Result<
 
     conn.execute(
         "DELETE FROM history WHERE id NOT IN (
-            SELECT id FROM history ORDER BY timestamp DESC LIMIT ?1
+            SELECT id FROM history ORDER BY timestamp DESC, id DESC LIMIT ?1
         )",
         [max_items],
     )
@@ -55,7 +56,7 @@ fn add_scan_sqlite(data_dir: &str, max_items: u32, scan: &ScanObject) -> Result<
 fn get_history_sqlite(data_dir: &str, max_items: u32) -> Result<Vec<ScanObject>, String> {
     let conn = open_db(data_dir)?;
     let mut stmt = conn
-        .prepare("SELECT id, url, timestamp FROM history ORDER BY timestamp DESC LIMIT ?1")
+        .prepare("SELECT id, url, timestamp FROM history ORDER BY timestamp DESC, id DESC LIMIT ?1")
         .map_err(|e| e.to_string())?;
 
     let results = stmt
@@ -94,10 +95,44 @@ fn read_json_history(data_dir: &str) -> Result<Vec<ScanObject>, String> {
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
+// Per-process counter mixed into temp file names so two writes on the same
+// thread within the same nanosecond still can't collide.
+static TMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 fn write_json_history(data_dir: &str, history: &[ScanObject]) -> Result<(), String> {
     let path = json_path(data_dir);
     let json = serde_json::to_string_pretty(history).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    // Write to a uniquely-named temp file first and rename over the target so
+    // a crash or concurrent read never sees a partially-written file. The name
+    // is unique per call (pid + nanos-since-epoch + a per-process counter) so
+    // two concurrent writers (e.g. `add_scan` racing `migrate_history` or
+    // `clear_history` on different threads) never share a temp file - sharing
+    // one meant the first rename could consume the second writer's temp file,
+    // making the second rename fail with ENOENT and silently dropping data.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let counter = TMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp_path = PathBuf::from(format!(
+        "{}.{}.{}.{}.tmp",
+        path.display(),
+        std::process::id(),
+        nanos,
+        counter
+    ));
+
+    if let Err(e) = std::fs::write(&tmp_path, json) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e.to_string());
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, &path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e.to_string());
+    }
+
+    Ok(())
 }
 
 fn add_scan_json(data_dir: &str, max_items: u32, scan: &ScanObject) -> Result<(), String> {
@@ -177,35 +212,69 @@ pub fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
-pub fn migrate_history(
-    state: State<'_, AppState>,
-    from: String,
-    to: String,
+/// Move history from one storage backend to another. The destination is
+/// cleared first, then rewritten in bulk, so re-running the same migration
+/// (or migrating back and forth) never duplicates entries.
+///
+/// Source items come back newest-first (both backends already return them
+/// that way). Writing to JSON is then a direct bulk write. Writing to
+/// SQLite has to insert oldest-first, inside a transaction, so autoincrement
+/// ids land in chronological order — that's what keeps
+/// `ORDER BY timestamp DESC, id DESC` correct afterwards.
+pub fn migrate_history_internal(
+    data_dir: &str,
+    max_items: u32,
+    from: &str,
+    to: &str,
 ) -> Result<u32, String> {
-    let max = {
-        let config = state.config.lock().map_err(|e| e.to_string())?;
-        config.max_history_items
-    };
-    let data_dir = &state.data_dir;
+    if from == to {
+        return Ok(0);
+    }
 
-    // Read from source
-    let items = match from.as_str() {
-        "sqlite" => get_history_sqlite(data_dir, max)?,
-        _ => get_history_json(data_dir, max)?,
+    let items = match from {
+        "sqlite" => get_history_sqlite(data_dir, max_items)?,
+        _ => get_history_json(data_dir, max_items)?,
     };
 
     let count = items.len() as u32;
 
-    // Write to destination
-    for scan in &items {
-        match to.as_str() {
-            "sqlite" => add_scan_sqlite(data_dir, max, scan)?,
-            _ => add_scan_json(data_dir, max, scan)?,
+    match to {
+        "sqlite" => {
+            let mut conn = open_db(data_dir)?;
+            // Delete-then-insert in one transaction so a failure partway
+            // through never leaves the destination cleared but not
+            // repopulated (or vice versa).
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM history", [])
+                .map_err(|e| e.to_string())?;
+            for scan in items.iter().rev() {
+                tx.execute(
+                    "INSERT INTO history (url, timestamp) VALUES (?1, ?2)",
+                    [&scan.url, &scan.timestamp],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+        _ => {
+            // `write_json_history` overwrites the whole file (atomically,
+            // via a rename) so a separate clear step first would just add
+            // a non-atomic window without replacing anything extra.
+            write_json_history(data_dir, &items)?;
         }
     }
 
     Ok(count)
+}
+
+#[tauri::command]
+pub fn migrate_history(
+    state: State<'_, AppState>,
+    max_items: u32,
+    from: String,
+    to: String,
+) -> Result<u32, String> {
+    migrate_history_internal(&state.data_dir, max_items, &from, &to)
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -406,14 +475,74 @@ mod tests {
         assert_eq!(history[1].url, "https://first.com");
     }
 
-    // ─── Migration tests ─────────────────────────────────────
-
     #[test]
-    fn migrate_json_to_sqlite() {
+    fn write_json_history_concurrent_writes_are_safe() {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path().to_string_lossy().to_string();
 
-        // Add items to JSON
+        let thread_count = 8;
+        let writes_per_thread = 50;
+
+        // All values any thread might have written, so we can check the
+        // final file settled on one of them rather than something mangled.
+        let mut all_values = Vec::new();
+        for t in 0..thread_count {
+            for i in 0..writes_per_thread {
+                all_values.push(make_scan(&format!("https://thread{}-{}.com", t, i), "2024-01-01 00:00:00"));
+            }
+        }
+
+        let handles: Vec<_> = (0..thread_count)
+            .map(|t| {
+                let data_dir = data_dir.clone();
+                std::thread::spawn(move || -> Result<(), String> {
+                    for i in 0..writes_per_thread {
+                        let scan = make_scan(&format!("https://thread{}-{}.com", t, i), "2024-01-01 00:00:00");
+                        write_json_history(&data_dir, &[scan])?;
+                    }
+                    Ok(())
+                })
+            })
+            .collect();
+
+        for h in handles {
+            // No errors returned from any concurrent write.
+            h.join().unwrap().unwrap();
+        }
+
+        // The final file must parse as valid JSON equal to one of the
+        // written values (read_json_history round-trips through serde_json).
+        let final_history = read_json_history(&data_dir).unwrap();
+        assert_eq!(final_history.len(), 1);
+        assert!(
+            all_values.iter().any(|v| v.url == final_history[0].url
+                && v.timestamp == final_history[0].timestamp),
+            "final history {:?} was not one of the written values",
+            final_history
+        );
+
+        // No leftover temp files from any writer.
+        let leftover_tmp: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(
+            leftover_tmp.is_empty(),
+            "leftover tmp files: {:?}",
+            leftover_tmp
+        );
+    }
+
+    // ─── Migration tests ─────────────────────────────────────
+    // These call `migrate_history_internal` directly, exercising the same
+    // clear-then-bulk-write logic the `migrate_history` command uses.
+
+    #[test]
+    fn migrate_from_equals_to_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().to_string_lossy().to_string();
+
         add_scan_internal(
             &data_dir,
             100,
@@ -422,31 +551,52 @@ mod tests {
         )
         .unwrap();
 
-        add_scan_internal(
-            &data_dir,
-            100,
-            &make_scan("https://b.com", "2024-01-02 00:00:00"),
-            "json",
-        )
-        .unwrap();
-
-        // Migrate JSON → SQLite
-        let json_items = get_history_json(&data_dir, 100).unwrap();
-        for scan in &json_items {
-            add_scan_sqlite(&data_dir, 100, scan).unwrap();
-        }
-
-        // Verify SQLite has the items
-        let sqlite_history = get_history_sqlite(&data_dir, 100).unwrap();
-        assert_eq!(sqlite_history.len(), 2);
+        let count = migrate_history_internal(&data_dir, 100, "json", "json").unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
-    fn migrate_sqlite_to_json() {
+    fn migrate_json_to_sqlite_keeps_newest_first() {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path().to_string_lossy().to_string();
 
-        // Add items to SQLite
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://a.com", "2024-01-01 00:00:00"),
+            "json",
+        )
+        .unwrap();
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://b.com", "2024-01-02 00:00:00"),
+            "json",
+        )
+        .unwrap();
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://c.com", "2024-01-03 00:00:00"),
+            "json",
+        )
+        .unwrap();
+
+        let count = migrate_history_internal(&data_dir, 100, "json", "sqlite").unwrap();
+        assert_eq!(count, 3);
+
+        let history = get_history_internal(&data_dir, 100, "sqlite").unwrap();
+        assert_eq!(
+            history.iter().map(|s| s.url.as_str()).collect::<Vec<_>>(),
+            vec!["https://c.com", "https://b.com", "https://a.com"]
+        );
+    }
+
+    #[test]
+    fn migrate_sqlite_to_json_keeps_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().to_string_lossy().to_string();
+
         add_scan_internal(
             &data_dir,
             100,
@@ -454,7 +604,6 @@ mod tests {
             "sqlite",
         )
         .unwrap();
-
         add_scan_internal(
             &data_dir,
             100,
@@ -463,14 +612,72 @@ mod tests {
         )
         .unwrap();
 
-        // Migrate SQLite → JSON
-        let sqlite_items = get_history_sqlite(&data_dir, 100).unwrap();
-        for scan in &sqlite_items {
-            add_scan_json(&data_dir, 100, scan).unwrap();
-        }
+        let count = migrate_history_internal(&data_dir, 100, "sqlite", "json").unwrap();
+        assert_eq!(count, 2);
 
-        // Verify JSON has the items
-        let json_history = get_history_json(&data_dir, 100).unwrap();
-        assert_eq!(json_history.len(), 2);
+        let history = get_history_internal(&data_dir, 100, "json").unwrap();
+        assert_eq!(
+            history.iter().map(|s| s.url.as_str()).collect::<Vec<_>>(),
+            vec!["https://b.com", "https://a.com"]
+        );
+    }
+
+    #[test]
+    fn migrate_twice_does_not_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().to_string_lossy().to_string();
+
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://a.com", "2024-01-01 00:00:00"),
+            "json",
+        )
+        .unwrap();
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://b.com", "2024-01-02 00:00:00"),
+            "json",
+        )
+        .unwrap();
+
+        migrate_history_internal(&data_dir, 100, "json", "sqlite").unwrap();
+        migrate_history_internal(&data_dir, 100, "json", "sqlite").unwrap();
+
+        let history = get_history_internal(&data_dir, 100, "sqlite").unwrap();
+        assert_eq!(history.len(), 2);
+    }
+
+    #[test]
+    fn migrate_replaces_preexisting_destination_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().to_string_lossy().to_string();
+
+        // The destination already has an unrelated row before migrating -
+        // it must be gone afterwards, not merged with the migrated items.
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://stale.com", "2020-01-01 00:00:00"),
+            "sqlite",
+        )
+        .unwrap();
+
+        add_scan_internal(
+            &data_dir,
+            100,
+            &make_scan("https://fresh.com", "2024-01-01 00:00:00"),
+            "json",
+        )
+        .unwrap();
+
+        migrate_history_internal(&data_dir, 100, "json", "sqlite").unwrap();
+
+        let history = get_history_internal(&data_dir, 100, "sqlite").unwrap();
+        assert_eq!(
+            history.iter().map(|s| s.url.as_str()).collect::<Vec<_>>(),
+            vec!["https://fresh.com"]
+        );
     }
 }
