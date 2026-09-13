@@ -3,7 +3,7 @@ mod models;
 mod state;
 mod tray;
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 
 use tauri::Manager;
@@ -13,7 +13,6 @@ use state::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -34,7 +33,8 @@ pub fn run() {
                 config: Arc::new(Mutex::new(config)),
                 data_dir: data_dir_str,
                 listener_active: Arc::new(AtomicBool::new(false)),
-                tray_pulse_active: Arc::new(AtomicBool::new(false)),
+                tray_pulse_gen: Arc::new(AtomicU64::new(0)),
+                tray_state: Mutex::new("idle".to_string()),
             };
 
             // Build system tray
@@ -64,7 +64,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::url::check_url,
             commands::config::get_config,
             commands::config::save_config,
             commands::history::add_scan,
@@ -74,6 +73,8 @@ pub fn run() {
             commands::scan::process_scan,
             commands::scan::start_global_listener,
             commands::scan::stop_global_listener,
+            commands::permission::check_input_permission,
+            commands::permission::open_input_permission_settings,
             tray::set_tray_state,
         ])
         .run(tauri::generate_context!())

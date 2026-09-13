@@ -28,6 +28,18 @@ pub struct Config {
     pub close_to_tray: bool,
     #[serde(default)]
     pub show_debug_toasts: bool,
+    /// Whether the global keystroke listener enforces "scanner speed"
+    /// timing (inter-char gap, terminator gap, minimum length) before it
+    /// will treat buffered keystrokes as a scan. Defaults to `true` so
+    /// non-technical users keep the stray-keystroke protection on by
+    /// default; flipping it off is an explicit opt-in (e.g. to let someone
+    /// test scanning by hand-typing input without a physical scanner).
+    #[serde(default = "default_true")]
+    pub require_scanner_speed: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -49,6 +61,7 @@ impl Default for Config {
             },
             close_to_tray: false,
             show_debug_toasts: false,
+            require_scanner_speed: true,
         }
     }
 }
@@ -65,6 +78,7 @@ mod tests {
         assert_eq!(config.notification_type, "toast");
         assert!(!config.close_to_tray);
         assert!(!config.show_debug_toasts);
+        assert!(config.require_scanner_speed);
         assert!(config.allowlist.is_empty());
         assert!(config.blocklist.is_empty());
         assert_eq!(config.prefix.mode, "none");
@@ -95,6 +109,25 @@ mod tests {
         }"#;
         let config: Config = serde_json::from_str(json).unwrap();
         assert!(!config.close_to_tray);
+    }
+
+    #[test]
+    fn backward_compat_missing_require_scanner_speed() {
+        // Old config files predate this field entirely; they must still
+        // deserialize, defaulting to `true` so existing users keep the
+        // stray-keystroke protection on until they explicitly opt out.
+        let json = r#"{
+            "allowlist": [],
+            "blocklist": [],
+            "history_storage_method": "json",
+            "scan_mode": "single",
+            "notification_type": "toast",
+            "max_history_items": 100,
+            "prefix": {"mode": "none"},
+            "suffix": {"mode": "enter"}
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert!(config.require_scanner_speed);
     }
 
     #[test]
