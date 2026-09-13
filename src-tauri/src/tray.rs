@@ -15,8 +15,8 @@ type Color = (u8, u8, u8, u8);
 
 /// State colors
 const COLOR_IDLE: Color = (161, 161, 170, 255); // zinc-400
-const COLOR_LISTENING_BRIGHT: Color = (239, 68, 68, 255); // red-500
-const COLOR_LISTENING_DIM: Color = (185, 28, 28, 255); // red-700
+const COLOR_LISTENING_BRIGHT: Color = (34, 197, 94, 255); // green-500
+const COLOR_LISTENING_DIM: Color = (21, 128, 61, 255); // green-700
 const COLOR_GENERATING: Color = (59, 130, 246, 255); // blue-500
 
 /// Dot overlay parameters
@@ -105,7 +105,7 @@ pub fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Erro
 
     let tray = TrayIconBuilder::with_id("main")
         .icon(icon)
-        .tooltip("OpenQR")
+        .tooltip("OpenQR (running in background)")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {
@@ -139,10 +139,27 @@ pub fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Erro
 }
 
 /// Set the tray icon state. Valid states: "idle", "listening", "generating".
+///
+/// Bug #5: repeated calls with the same state used to each spawn their own
+/// pulse thread, since they all shared one "keep pulsing" flag that a new
+/// call would just set back to `true`. Now a redundant call is a no-op, and
+/// a real transition bumps a generation counter that the (at most one)
+/// running pulse thread checks on every frame, so the old thread stops
+/// cleanly instead of piling up.
 #[tauri::command]
 pub fn set_tray_state(app: AppHandle, state: State<'_, AppState>, tray_state: String) {
-    // Stop any existing pulse animation
-    state.tray_pulse_active.store(false, Ordering::SeqCst);
+    {
+        let mut current = match state.tray_state.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        if *current == tray_state {
+            return;
+        }
+        *current = tray_state.clone();
+    }
+
+    let generation = state.tray_pulse_gen.fetch_add(1, Ordering::SeqCst) + 1;
 
     let tray = match app.tray_by_id("main") {
         Some(t) => t,
@@ -152,13 +169,12 @@ pub fn set_tray_state(app: AppHandle, state: State<'_, AppState>, tray_state: St
     match tray_state.as_str() {
         "listening" => {
             // Start pulse animation
-            let pulse_active = state.tray_pulse_active.clone();
-            pulse_active.store(true, Ordering::SeqCst);
+            let pulse_gen = state.tray_pulse_gen.clone();
 
             let app_clone = app.clone();
             thread::spawn(move || {
                 let mut bright = true;
-                while pulse_active.load(Ordering::Relaxed) {
+                while pulse_gen.load(Ordering::SeqCst) == generation {
                     let (r, g, b, a) = if bright {
                         COLOR_LISTENING_BRIGHT
                     } else {
