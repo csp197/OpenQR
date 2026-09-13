@@ -1,58 +1,76 @@
-import { useState, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Image as ImageIcon, Copy, Download } from "lucide-react";
-import { Image } from "@tauri-apps/api/image";
 import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { toast } from "sonner";
+import { notify } from "../lib/notify";
+import { qrColorWarning } from "../lib/contrast";
 
 interface GeneratorProps {
   url: string;
   setUrl: (val: string) => void;
 }
 
+type Encoded = { encoded: string; valid: boolean; usedHint: boolean };
+
+const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+const LOOKS_LIKE_DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?(\/.*)?$/i;
+const LOOKS_LIKE_LOCALHOST_RE = /^localhost(:\d+)?(\/.*)?$/i;
+
+/** Turn any invoke()/plugin rejection into a readable string, whether it's a string, an Error, or an object with a message. */
+function describeError(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "Unknown error";
+}
+
+function computeEncoded(input: string): Encoded {
+  const trimmed = input.trim();
+  if (!trimmed) return { encoded: "", valid: false, usedHint: false };
+
+  if (SCHEME_RE.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      const valid = parsed.protocol === "http:" || parsed.protocol === "https:";
+      return { encoded: trimmed, valid, usedHint: false };
+    } catch {
+      return { encoded: trimmed, valid: false, usedHint: false };
+    }
+  }
+
+  const looksLikeDomain = LOOKS_LIKE_DOMAIN_RE.test(trimmed) || LOOKS_LIKE_LOCALHOST_RE.test(trimmed);
+  if (!looksLikeDomain) {
+    return { encoded: trimmed, valid: false, usedHint: false };
+  }
+
+  const candidate = `https://${trimmed}`;
+  try {
+    new URL(candidate);
+    return { encoded: candidate, valid: true, usedHint: true };
+  } catch {
+    return { encoded: trimmed, valid: false, usedHint: false };
+  }
+}
+
 const Generator = ({ url, setUrl }: GeneratorProps) => {
   const [fgColor, setFgColor] = useState("#000000");
   const [bgColor, setBgColor] = useState("#ffffff");
   const [logo, setLogo] = useState<string | undefined>(undefined);
-  const qrRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
   const fgColorInputRef = useRef<HTMLInputElement>(null);
   const bgColorInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isValidUrl = (string: string) => {
-    try {
-      const parsed = new URL(string);
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
-    } catch (_) {
-      return false;
-    }
-  };
-
-  const copyToClipboard = async () => {
-    const borderedCanvas = getBorderedCanvas();
-    if (!borderedCanvas) return;
-
-    try {
-      const blob = await new Promise<Blob | null>((resolve) =>
-        borderedCanvas.toBlob((b) => resolve(b), "image/png"),
-      );
-      if (!blob) throw new Error("Blob failed");
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      const tauriImage = await Image.fromBytes(bytes);
-      await writeImage(tauriImage as any);
-      toast.success("Copied to clipboard!", {
-        position: "bottom-left",
-        duration: 4000,
-      });
-    } catch (err) {
-      toast.error("Copy failed", { position: "bottom-left", duration: 4000 });
-    }
-  };
+  const { encoded, valid, usedHint } = useMemo(() => computeEncoded(url), [url]);
+  const colorWarning = useMemo(() => qrColorWarning(fgColor, bgColor), [fgColor, bgColor]);
 
   const getBorderedCanvas = () => {
-    const canvas = qrRef.current?.querySelector("canvas");
+    const canvas = exportRef.current?.querySelector("canvas");
     if (!canvas) return null;
 
     const padding = canvas.width * 0.08;
@@ -70,6 +88,45 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
     return offscreenCanvas;
   };
 
+  const filename = () => {
+    let host = "qrcode";
+    try {
+      host = new URL(encoded).hostname || "qrcode";
+    } catch {
+      host = "qrcode";
+    }
+    return `${host}_qrcode.png`;
+  };
+
+  const copyToClipboard = async () => {
+    const borderedCanvas = getBorderedCanvas();
+    if (!borderedCanvas) return;
+
+    try {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        borderedCanvas.toBlob((b) => resolve(b), "image/png"),
+      );
+      if (!blob) throw new Error("Blob failed");
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      // Pass the raw PNG bytes straight to `writeImage` instead of wrapping
+      // them via `Image.fromBytes` from `@tauri-apps/api/image`. The
+      // clipboard plugin bundles its own nested copy of `@tauri-apps/api`
+      // (different version than our top-level one), and its `transformImage`
+      // helper does an `instanceof Image` check against ITS OWN `Image`
+      // class. An `Image` instance created from our top-level package fails
+      // that check, so the class instance (which serializes to `{}`, since
+      // its `rid` lives in a private WeakMap) gets sent as-is instead of the
+      // resource id — and the Rust side fails to deserialize it, rejecting
+      // the call. `writeImage` also accepts raw bytes directly, which avoids
+      // the cross-package type mismatch entirely.
+      await writeImage(bytes);
+      notify("success", "Copied to clipboard!");
+    } catch (err) {
+      console.error("Copy failed:", err);
+      notify("error", "Copy failed", { description: describeError(err) });
+    }
+  };
+
   const downloadImage = async () => {
     const borderedCanvas = getBorderedCanvas();
     if (!borderedCanvas) return;
@@ -77,7 +134,7 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
     try {
       const filePath = await save({
         filters: [{ name: "Image", extensions: ["png"] }],
-        defaultPath: `${new URL(url).host}_qrcode.png`,
+        defaultPath: filename(),
       });
 
       if (!filePath) return; // User cancelled
@@ -86,23 +143,18 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
       );
       if (!blob) throw new Error("Blob creation failed");
 
-      const arrayBuffer = await blob.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
+      const bytes = new Uint8Array(await blob.arrayBuffer());
       await writeFile(filePath, bytes);
-      toast.success(`Downloaded to ${filePath}!`);
-    } catch (err) {
-      console.error("Download failed:", err);
-      toast.error("Download failed", {
-        position: "bottom-left",
-        duration: 4000,
-      });
+      notify("success", `Downloaded to ${filePath}!`);
+    } catch {
+      notify("error", "Download failed");
     }
   };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
       <div className="space-y-2">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-1">
+        <label className="text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 px-1">
           URL
         </label>
         <input
@@ -110,61 +162,81 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           className={`w-full bg-slate-100 dark:bg-zinc-900 border rounded-2xl p-4 text-sm outline-none transition-all ${
-            url && !isValidUrl(url)
+            url && !valid
               ? "border-red-500"
               : "border-transparent focus:ring-2 focus:ring-blue-500"
           }`}
-          placeholder="https://..."
+          placeholder="https://example.com"
         />
+        {url && !valid && (
+          <p className="text-xs text-red-500 px-1">
+            Enter a web address like example.com
+          </p>
+        )}
+        {url && valid && usedHint && (
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 px-1">
+            Will be encoded as {encoded}
+          </p>
+        )}
       </div>
 
       <div className="relative flex justify-center py-4">
-        <div
-          ref={qrRef}
-          className="bg-white p-5 rounded-4xl shadow-xl border border-slate-100"
-        >
-          {url ? (
+        <div className="bg-white p-5 rounded-4xl shadow-xl border border-slate-100">
+          {url && valid ? (
             <QRCodeCanvas
-              value={url}
+              value={encoded}
               size={180}
               fgColor={fgColor}
               bgColor={bgColor}
               level="H"
               imageSettings={
-                logo
-                  ? { src: logo, height: 40, width: 40, excavate: true }
-                  : undefined
+                logo ? { src: logo, height: 40, width: 40, excavate: true } : undefined
               }
             />
           ) : (
-            <div className="w-45 h-45 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 text-xs">
+            <div className="w-45 h-45 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-zinc-600 dark:text-zinc-400 text-xs">
               Ready...
             </div>
           )}
         </div>
+      </div>
 
-        {url && (
-          <div className="absolute bottom-6 flex gap-2 translate-x-1/2 right-1/2 ml-28">
-            <button
-              onClick={copyToClipboard}
-              title="Copy to Clipboard"
-              className="p-2 bg-white rounded-full shadow-md hover:bg-slate-50 border border-slate-100 transition-transform active:scale-95"
-            >
-              <Copy size={16} className="text-slate-600" />
-            </button>
-            <button
-              onClick={downloadImage}
-              title="Download PNG"
-              className="p-2 bg-white rounded-full shadow-md hover:bg-slate-50 border border-slate-100 transition-transform active:scale-95"
-            >
-              <Download size={16} className="text-blue-600" />
-            </button>
-          </div>
-        )}
+      {/* Hidden high-resolution canvas used for copy/save so exports are always sharp. */}
+      <div style={{ display: "none" }}>
+        <div ref={exportRef}>
+          {url && valid && (
+            <QRCodeCanvas
+              value={encoded}
+              size={1024}
+              fgColor={fgColor}
+              bgColor={bgColor}
+              level="H"
+              imageSettings={
+                logo ? { src: logo, height: 224, width: 224, excavate: true } : undefined
+              }
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-3 justify-center">
+        <button
+          onClick={() => void copyToClipboard()}
+          disabled={!valid}
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-800 border rounded-full text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Copy size={14} className="text-slate-600 dark:text-zinc-300" /> Copy image
+        </button>
+        <button
+          onClick={() => void downloadImage()}
+          disabled={!valid}
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-800 border rounded-full text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download size={14} className="text-blue-600" /> Save PNG
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {/* Style/Color Button */}
         <div className="relative">
           <button
             onClick={() => fgColorInputRef.current?.click()}
@@ -205,27 +277,24 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
         </div>
 
         <button
-          onClick={() => {
-            fileInputRef.current?.click();
-          }}
+          onClick={() => fileInputRef.current?.click()}
           className="w-full flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border rounded-2xl text-xs font-semibold"
         >
           <ImageIcon size={14} className="text-purple-500" />
           Upload Logo
         </button>
 
-        <button
-          onClick={() => {
-            setLogo(undefined);
-            toast.success("Logo removed", {
-              position: "bottom-left",
-              duration: 4000,
-            });
-          }}
-          className="flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold"
-        >
-          Remove Logo
-        </button>
+        {logo && (
+          <button
+            onClick={() => {
+              setLogo(undefined);
+              notify("success", "Logo removed");
+            }}
+            className="flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-red-200 text-red-600 rounded-2xl text-xs font-semibold"
+          >
+            Remove Logo
+          </button>
+        )}
 
         <input
           type="file"
@@ -234,18 +303,29 @@ const Generator = ({ url, setUrl }: GeneratorProps) => {
           accept="image/*"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onloadend = () => setLogo(reader.result as string);
-              reader.readAsDataURL(file);
-              toast.success("Logo added!", {
-                position: "bottom-left",
-                duration: 4000,
-              });
-            }
+            if (!file) return;
+
+            const reader = new FileReader();
+            // `onloadend` also fires after a failed read - use `onload` so
+            // a read error doesn't also show the success toast.
+            reader.onload = () => {
+              setLogo(reader.result as string);
+              notify("success", "Logo added!");
+            };
+            reader.onerror = () => {
+              notify("error", "Could not read that image");
+            };
+            reader.readAsDataURL(file);
+            e.target.value = "";
           }}
         />
       </div>
+
+      {colorWarning && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 text-center -mt-2">
+          {colorWarning}
+        </p>
+      )}
     </div>
   );
 };
