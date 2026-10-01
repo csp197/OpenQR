@@ -1,4 +1,5 @@
-# OpenQR
+# OpenQR 
+### v2.0.1
 
 ![screenshot](public/screenshot.png)
 
@@ -121,7 +122,7 @@ Releases are built automatically by GitHub Actions when you push to `main`. The 
 
 To publish a new version:
 
-1. Bump the `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `package.json`
+1. Bump the `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json` and `README.md`
 2. Merge to `main`
 3. Go to the [Releases](https://github.com/csp197/openqr/releases) page and publish the draft
 
